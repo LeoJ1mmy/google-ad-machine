@@ -1,0 +1,48 @@
+{
+    "ad_placeholders": [
+        "廣告",
+        "advertisement",
+        "sponsored",
+        "推廣",
+        "贊助",
+        "廣告位",
+        "ad-container",
+        "ad-banner",
+        "advertisement-container",
+        "google_ad",
+        "facebook_ad",
+        "廣告區塊",
+        "廣告欄位",
+        "ns-6wec4-e-2",
+        "asset-container",
+        "boxTitle",
+        "suggest_pc",
+        "adHeight250",
+        "header-ad",
+        "top-banner",
+        "top-ad",
+        "header-banner",
+        "top-advertisement",
+        "google_ads_iframe",
+        "07-ent-sub-P-K1_0__container__",
+        "google_ads",
+        "googleadservices",
+        "doubleclick",
+        "googlesyndication"
+    ],
+    "replacement_text": "此處原本為廣告內容 - 已由機器人替換",
+    "replacement_image": "Screenshot 2025-07-24 at 2.17.13\u202fPM.png",
+    "custom_styles": "background: linear-gradient(45deg, #f8f9fa, #e9ecef); border: 2px dashed #dee2e6; padding: 20px; text-align: center; color: #6c757d; font-family: 'Microsoft JhengHei', Arial, sans-serif; font-size: 14px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);",
+    "screenshot_settings": {
+        "output_directory": "screenshots",
+        "file_format": "png",
+        "window_size": "1920x1080",
+        "wait_time": 2
+    },
+    "target_websites": [
+        "https://playing.ltn.com.tw",
+        "https://playing.ltn.com.tw/article/28736",
+        "https://playing.ltn.com.tw/article/28735",
+        "https://playing.ltn.com.tw/article/28734"
+    ]
+} 

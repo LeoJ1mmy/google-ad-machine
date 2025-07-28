@@ -1,0 +1,65 @@
+{
+    "screenshot_settings": {
+        "screenshot_count": 10,
+        "max_attempts": 50,
+        "page_load_timeout": 15,
+        "wait_time": 3
+    },
+    "image_settings": {
+        "default_image": "mini.jpg",
+        "mini_image": "mini.jpg",
+        "image_formats": ["jpg", "png", "jpeg"],
+        "image_quality": 85
+    },
+    "website_settings": {
+        "base_url": "https://playing.ltn.com.tw",
+        "news_count": 20,
+        "target_ad_sizes": [
+            {"width": 970, "height": 90},
+            {"width": 986, "height": 106}
+        ]
+    },
+    "button_settings": {
+        "close_button": {
+            "position": "top-right",
+            "size": {"width": 15, "height": 15},
+            "z_index": 100,
+            "color": "#000000"
+        },
+        "info_button": {
+            "position": "top-right",
+            "size": {"width": 20, "height": 20},
+            "z_index": 100,
+            "color": "#00aecd",
+            "offset": 16
+        }
+    },
+    "ad_detection": {
+        "target_selectors": [
+            "div[id*=\"ad-K\"].suggest_pc",
+            "iframe[id=\"OneADIPPassbackAdX\"]",
+            "iframe[id*=\"google_ads_iframe\"]",
+            "div[class*=\"ad-container\"]",
+            "div[class*=\"advertisement\"]",
+            "div[id*=\"banner\"]",
+            "div[class*=\"banner\"]"
+        ],
+        "exclude_selectors": [
+            "img[src*=\"googleads\"]",
+            "img[src*=\"googlesyndication\"]",
+            "img[src*=\"adchoices\"]",
+            "img[src*=\"zh_tw.png\"]"
+        ]
+    },
+    "browser_settings": {
+        "headless": false,
+        "fullscreen": true,
+        "window_size": {"width": 1920, "height": 1080},
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    },
+    "output_settings": {
+        "screenshot_folder": "screenshots",
+        "log_file": "ad_replacer.log",
+        "timestamp_format": "%Y%m%d_%H%M%S"
+    }
+}
