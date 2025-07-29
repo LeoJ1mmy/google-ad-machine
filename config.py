@@ -62,6 +62,9 @@ INFO_BUTTON_SIZE = {"width": 15, "height": 15}   # 資訊按鈕大小 (與關閉
 INFO_BUTTON_COLOR = "#00aecd"                     # 資訊按鈕顏色 (Google藍)
 INFO_BUTTON_OFFSET = 16                          # 資訊按鈕偏移量
 
+# 按鈕樣式設定 - 只需要修改這個變數即可切換樣式
+BUTTON_STYLE = "adchoices_dots"  # 可選: "dots" (驚嘆號+點點), "cross" (驚嘆號+叉叉), "adchoices" (AdChoices+叉叉), "adchoices_dots" (AdChoices+點點)
+
 # 瀏覽器設定
 HEADLESS_MODE = False       # 無頭模式 (True/False)
 FULLSCREEN_MODE = True      # 全螢幕模式 (True/False)

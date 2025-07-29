@@ -235,6 +235,56 @@ class GoogleAdReplacer:
         print(f"掃描完成，找到 {len(matching_elements)} 個符合尺寸的廣告元素")
         return matching_elements
     
+    def get_button_style(self):
+        """根據配置返回按鈕樣式"""
+        button_style = getattr(self, 'button_style', BUTTON_STYLE)
+        
+        # 預先定義的按鈕樣式
+        # 統一的資訊按鈕樣式 - 使用 Google 標準設計
+        unified_info_button = {
+            "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
+            "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+        }
+        
+        button_styles = {
+            "dots": {
+                "close_button": {
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                },
+                "info_button": unified_info_button
+            },
+            "cross": {
+                "close_button": {
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                },
+                "info_button": unified_info_button
+            },
+            "adchoices": {
+                "close_button": {
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                },
+                "info_button": {
+                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
+                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                }
+            },
+            "adchoices_dots": {
+                "close_button": {
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                },
+                "info_button": {
+                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
+                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                }
+            }
+        }
+        
+        return button_styles.get(button_style, button_styles["dots"])
+
     def replace_ad_content(self, element, image_data, target_width, target_height):
         try:
             # 獲取原始尺寸
@@ -252,6 +302,13 @@ class GoogleAdReplacer:
             if (original_info['width'] != target_width or 
                 original_info['height'] != target_height):
                 return False
+            
+            # 獲取按鈕樣式
+            button_style = self.get_button_style()
+            close_button_html = button_style["close_button"]["html"]
+            close_button_style = button_style["close_button"]["style"]
+            info_button_html = button_style["info_button"]["html"]
+            info_button_style = button_style["info_button"]["style"]
             
             # 只替換圖片，保留廣告按鈕
             success = self.driver.execute_script("""
@@ -341,6 +398,30 @@ class GoogleAdReplacer:
                 var imageBase64 = arguments[1];
                 var targetWidth = arguments[2];
                 var targetHeight = arguments[3];
+                var closeButtonHtml = arguments[4];
+                var closeButtonStyle = arguments[5];
+                var infoButtonHtml = arguments[6];
+                var infoButtonStyle = arguments[7];
+                
+                if (!container) return false;
+                
+                // 確保 container 是 relative
+                if (window.getComputedStyle(container).position === 'static') {
+                  container.style.position = 'relative';
+                }
+                // 先移除舊的（避免重複）
+                ['close_button', 'abgb'].forEach(function(id){
+                  var old = container.querySelector('#'+id);
+                  if(old) old.remove();
+                });
+                
+                var replacedCount = 0;
+                var newImageSrc = 'data:image/png;base64,' + imageBase64;
+                
+                var container = arguments[0];
+                var imageBase64 = arguments[1];
+                var targetWidth = arguments[2];
+                var targetHeight = arguments[3];
                 
                 if (!container) return false;
                 
@@ -421,15 +502,15 @@ class GoogleAdReplacer:
                         // 叉叉 - 貼著替換圖片的右上角
                         var closeButton = document.createElement('div');
                         closeButton.id = 'close_button';
-                        closeButton.innerHTML = '<img id="close_button_svg" src="https://static.criteo.net/flash/icon/close_button.svg">';
-                        closeButton.style.cssText = 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        closeButton.innerHTML = closeButtonHtml;
+                        closeButton.style.cssText = closeButtonStyle;
                         
                         // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
                         var abgb = document.createElement('div');
                         abgb.id = 'abgb';
                         abgb.className = 'abgb';
-                        abgb.innerHTML = '<img id="info_button_svg" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNSAxNSI+PHBhdGggZD0iTTcuNSAxLjVhNiA2IDAgMSAwIDAgMTIgNiA2IDAgMCAwIDAtMTJ6bTAgMWE1IDUgMCAxIDEgMCAxMCA1IDUgMCAwIDEgMC0xMHpNNi42MjUgMTFoMS43NVY2LjVoLTEuNzV6TTcuNSAzLjc1YTEgMSAwIDEgMCAwIDIgMSAxIDAgMCAwIDAtMnoiIGZpbGw9IiMwMGFlY2QiLz48L3N2Zz4=">';
-                        abgb.style.cssText = 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        abgb.innerHTML = infoButtonHtml;
+                        abgb.style.cssText = infoButtonStyle;
                         
                         // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
                         imgParent.appendChild(abgb);
@@ -472,14 +553,14 @@ class GoogleAdReplacer:
                     // 叉叉 - 貼著替換圖片的右上角
                     var closeButton = document.createElement('div');
                     closeButton.id = 'close_button';
-                    closeButton.innerHTML = '<img id="close_button_svg" src="https://static.criteo.net/flash/icon/close_button.svg">';
+                    closeButton.innerHTML = closeButtonHtml;
                     closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
                     
                     // 驚嘆號 - 貼著替換圖片的右上角，與叉叉水平對齊
                     var abgb = document.createElement('div');
                     abgb.id = 'abgb';
                     abgb.className = 'abgb';
-                    abgb.innerHTML = '<img id="info_button_svg" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNSAxNSI+PHBhdGggZD0iTTcuNSAxLjVhNiA2IDAgMSAwIDAgMTIgNiA2IDAgMCAwIDAtMTJ6bTAgMWE1IDUgMCAxIDEgMCAxMCA1IDUgMCAwIDEgMC0xMHpNNi42MjUgMTFoMS43NVY2LjVoLTEuNzV6TTcuNSAzLjc1YTEgMSAwIDEgMCAwIDIgMSAxIDAgMCAwIDAtMnoiIGZpbGw9IiMwMGFlY2QiLz48L3N2Zz4=">';
+                    abgb.innerHTML = infoButtonHtml;
                     abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
                     
                     // 將按鈕添加到container內，與圖片同層
@@ -511,14 +592,14 @@ class GoogleAdReplacer:
                         // 添加兩個按鈕 - 貼著替換圖片的右上角，水平對齊
                         var closeButton = document.createElement('div');
                         closeButton.id = 'close_button';
-                        closeButton.innerHTML = '<img id="close_button_svg" src="https://static.criteo.net/flash/icon/close_button.svg">';
-                        closeButton.style.cssText = 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        closeButton.innerHTML = closeButtonHtml;
+                        closeButton.style.cssText = closeButtonStyle;
                         
                         var abgb = document.createElement('div');
                         abgb.id = 'abgb';
                         abgb.className = 'abgb';
-                        abgb.innerHTML = '<img id="info_button_svg" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNSAxNSI+PHBhdGggZD0iTTcuNSAxLjVhNiA2IDAgMSAwIDAgMTIgNiA2IDAgMCAwIDAtMTJ6bTAgMWE1IDUgMCAxIDEgMCAxMCA1IDUgMCAwIDEgMC0xMHpNNi42MjUgMTFoMS43NVY2LjVoLTEuNzV6TTcuNSAzLjc1YTEgMSAwIDEgMCAwIDIgMSAxIDAgMCAwIDAtMnoiIGZpbGw9IiMwMGFlY2QiLz48L3N2Zz4=">';
-                        abgb.style.cssText = 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        abgb.innerHTML = infoButtonHtml;
+                        abgb.style.cssText = infoButtonStyle;
                         
                         // 將按鈕添加到container內，與背景圖片同層
                         container.appendChild(abgb);
@@ -526,7 +607,7 @@ class GoogleAdReplacer:
                     }
                 }
                 return replacedCount > 0;
-            """, element, image_data, target_width, target_height)
+            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style)
             
             if success:
                 print(f"替換廣告 {original_info['width']}x{original_info['height']}")
@@ -823,3 +904,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+    
