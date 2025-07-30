@@ -347,9 +347,9 @@ class YahooAdReplacer:
         button_style = getattr(self, 'button_style', BUTTON_STYLE)
         
         # 預先定義的按鈕樣式
-        # 統一的資訊按鈕樣式 - 使用 Google 標準設計
+        # 統一的資訊按鈕樣式 - 使用正確的資訊 i 圖標
         unified_info_button = {
-            "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
+            "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="7.5" r="7" fill="none" stroke="#00aecd" stroke-width="1.5"/><path d="M7.5 4.5L7.5 10.5M7.5 12.5L7.5 12.5" stroke="#00aecd" stroke-width="1.5" fill="none"/></svg>',
             "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
         }
         
@@ -767,6 +767,10 @@ class YahooAdReplacer:
             self.driver.get(url)
             time.sleep(WAIT_TIME)
             
+            # 獲取頁面標題
+            page_title = self.driver.title
+            print(f"📰 頁面標題: {page_title}")
+            
             # 檢查是否成功載入目標頁面
             current_url = self.driver.current_url
             if url not in current_url and 'yahoo.com' not in current_url:
@@ -885,7 +889,7 @@ class YahooAdReplacer:
                             except Exception as e:
                                 print(f"檢查廣告有效性失敗: {e}")
                             
-                            screenshot_path = self.take_screenshot()
+                            screenshot_path = self.take_screenshot(page_title)
                             if screenshot_path:
                                 screenshot_paths.append(screenshot_path)
                                 print(f"✅ 截圖保存: {screenshot_path}")
@@ -894,24 +898,50 @@ class YahooAdReplacer:
                             
                             # 截圖後復原該位置的廣告
                             try:
+                                # 簡化還原邏輯：直接移除所有注入的元素
                                 self.driver.execute_script("""
-                                    // 移除我們添加的所有按鈕
-                                    var allCloseButtons = document.querySelectorAll('[id^="close_button_"]');
-                                    var allInfoButtons = document.querySelectorAll('[id^="abgb_"]');
-                                    allCloseButtons.forEach(function(btn) { btn.remove(); });
-                                    allInfoButtons.forEach(function(btn) { btn.remove(); });
-                                    
-                                    // 復原原始廣告內容（這裡需要根據實際情況調整）
-                                    var element = arguments[0];
-                                    if (element.tagName === 'IMG') {
-                                        // 如果是圖片，恢復原始src
-                                        element.src = element.getAttribute('data-original-src') || element.src;
-                                    } else if (element.tagName === 'IFRAME') {
-                                        // 如果是iframe，恢復可見性
-                                        element.style.visibility = 'visible';
+                                    // 移除所有注入的按鈕
+                                    var buttons = document.querySelectorAll('#close_button, #abgb, #info_button, [id^="close_button_"], [id^="abgb_"]');
+                                    for (var i = 0; i < buttons.length; i++) {
+                                        buttons[i].remove();
                                     }
-                                """, ad_info['element'])
+                                    
+                                    // 移除所有替換的圖片
+                                    var replacedImages = document.querySelectorAll('img[src*="data:image/png;base64"]');
+                                    for (var i = 0; i < replacedImages.length; i++) {
+                                        replacedImages[i].remove();
+                                    }
+                                    
+                                    // 移除替換容器
+                                    var container = document.querySelector('#ad_replacement_container');
+                                    if (container) {
+                                        container.remove();
+                                    }
+                                    
+                                    // 恢復所有隱藏的 iframe
+                                    var hiddenIframes = document.querySelectorAll('iframe[style*="display: none"], iframe[style*="visibility: hidden"]');
+                                    for (var i = 0; i < hiddenIframes.length; i++) {
+                                        hiddenIframes[i].style.display = 'block';
+                                        hiddenIframes[i].style.visibility = 'visible';
+                                    }
+                                    
+                                    // 清理所有 data 屬性
+                                    var allElements = document.querySelectorAll('[data-original-content], [data-original-src], [data-original-display], [data-injected]');
+                                    for (var i = 0; i < allElements.length; i++) {
+                                        allElements[i].removeAttribute('data-original-content');
+                                        allElements[i].removeAttribute('data-original-src');
+                                        allElements[i].removeAttribute('data-original-display');
+                                        allElements[i].removeAttribute('data-injected');
+                                    }
+                                    
+                                    console.log('✅ 已清理所有注入元素');
+                                """)
                                 print("✅ 廣告位置已復原")
+                                
+                                # 標記該位置為已處理，避免無限循環
+                                position_key = f"top:{ad_info['top']}, left:{ad_info['left']}"
+                                processed_positions.add(position_key)
+                                print(f"📍 標記位置為已處理: {position_key}")
                             except Exception as e:
                                 print(f"復原廣告失敗: {e}")
                             
@@ -941,7 +971,7 @@ class YahooAdReplacer:
             print(f"處理網站失敗: {e}")
             return []
     
-    def take_screenshot(self):
+    def take_screenshot(self, page_title=None):
         import platform
         import subprocess
         
@@ -949,7 +979,19 @@ class YahooAdReplacer:
             os.makedirs(SCREENSHOT_FOLDER)
             
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filepath = f"{SCREENSHOT_FOLDER}/yahoo_replaced_{timestamp}.png"
+        
+        # 處理頁面標題，移除特殊字符
+        if page_title:
+            # 移除特殊字符，只保留中文、英文、數字
+            import re
+            clean_title = re.sub(r'[^\u4e00-\u9fff\w\s]', '', page_title)
+            # 限制標題長度，避免檔案名過長
+            clean_title = clean_title[:30].strip()
+            # 替換空格為底線
+            clean_title = clean_title.replace(' ', '_')
+            filepath = f"{SCREENSHOT_FOLDER}/yahoo_{clean_title}_{timestamp}.png"
+        else:
+            filepath = f"{SCREENSHOT_FOLDER}/yahoo_replaced_{timestamp}.png"
         
         try:
             # 確保頁面完全穩定

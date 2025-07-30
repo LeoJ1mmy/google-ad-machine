@@ -38,6 +38,7 @@ MAX_CONSECUTIVE_FAILURES = 3  # 連續10次找不到對應尺寸就換下一張�
 # 網站設定
 BASE_URL = "https://playing.ltn.com.tw"  # 基礎網址 (自由時報)
 YAHOO_BASE_URL = "https://tw.news.yahoo.com/fun/"  # Yahoo 新聞娛樂版面
+LIULIFE_BASE_URL = "https://liulifejp.com"  # LiuLife 部落格
 NEWS_COUNT = 20             # 每次搜尋的新聞數量
 
 # 目標廣告尺寸 (寬度x高度)
