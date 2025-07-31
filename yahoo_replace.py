@@ -6,6 +6,8 @@ import os
 import base64
 import random
 import re
+import platform
+import subprocess
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -48,8 +50,169 @@ except ImportError:
     FULLSCREEN_MODE = True
     SCREENSHOT_FOLDER = "screenshots"
 
+class ScreenManager:
+    """螢幕管理器，用於偵測和管理多螢幕"""
+    
+    @staticmethod
+    def detect_screens():
+        """偵測可用的螢幕數量和資訊"""
+        system = platform.system()
+        screens = []
+        
+        try:
+            if system == "Darwin":  # macOS
+                # 使用 system_profiler 獲取顯示器資訊
+                cmd = "system_profiler SPDisplaysDataType | grep -A 2 'Resolution:'"
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    screen_count = 0
+                    for line in lines:
+                        if 'Resolution:' in line:
+                            screen_count += 1
+                            resolution = line.split('Resolution:')[1].strip()
+                            screens.append({
+                                'id': screen_count,
+                                'resolution': resolution,
+                                'primary': screen_count == 1
+                            })
+                
+                # 如果無法獲取詳細資訊，使用 AppleScript 獲取螢幕數量
+                if not screens:
+                    applescript = '''
+                    tell application "Finder"
+                        set screenCount to count of desktop
+                        return screenCount
+                    end tell
+                    '''
+                    result = subprocess.run(['osascript', '-e', applescript], 
+                                          capture_output=True, text=True)
+                    if result.returncode == 0:
+                        screen_count = int(result.stdout.strip())
+                        for i in range(1, screen_count + 1):
+                            screens.append({
+                                'id': i,
+                                'resolution': 'Unknown',
+                                'primary': i == 1
+                            })
+                
+            elif system == "Windows":
+                # Windows 使用 wmic 命令
+                cmd = 'wmic desktopmonitor get screenheight,screenwidth /format:csv'
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')[1:]  # 跳過標題行
+                    screen_id = 1
+                    for line in lines:
+                        if line.strip() and ',' in line:
+                            parts = line.split(',')
+                            if len(parts) >= 3:
+                                width = parts[2].strip()
+                                height = parts[1].strip()
+                                if width and height and width != 'NULL':
+                                    screens.append({
+                                        'id': screen_id,
+                                        'resolution': f"{width}x{height}",
+                                        'primary': screen_id == 1
+                                    })
+                                    screen_id += 1
+                
+            else:  # Linux
+                # Linux 使用 xrandr
+                try:
+                    result = subprocess.run(['xrandr'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        lines = result.stdout.split('\n')
+                        screen_id = 1
+                        for line in lines:
+                            if ' connected' in line:
+                                parts = line.split()
+                                if len(parts) >= 3:
+                                    resolution = parts[2] if 'x' in parts[2] else 'Unknown'
+                                    screens.append({
+                                        'id': screen_id,
+                                        'resolution': resolution,
+                                        'primary': 'primary' in line
+                                    })
+                                    screen_id += 1
+                except FileNotFoundError:
+                    print("xrandr 命令未找到，無法偵測螢幕")
+            
+            # 如果無法偵測到螢幕，至少返回一個預設螢幕
+            if not screens:
+                screens.append({
+                    'id': 1,
+                    'resolution': 'Unknown',
+                    'primary': True
+                })
+                
+        except Exception as e:
+            print(f"偵測螢幕時發生錯誤: {e}")
+            screens.append({
+                'id': 1,
+                'resolution': 'Unknown',
+                'primary': True
+            })
+        
+        return screens
+    
+    @staticmethod
+    def select_screen():
+        """讓使用者選擇要使用的螢幕"""
+        screens = ScreenManager.detect_screens()
+        
+        print("\n" + "="*50)
+        print("偵測到的螢幕:")
+        print("="*50)
+        
+        for screen in screens:
+            primary_text = " (主螢幕)" if screen['primary'] else ""
+            print(f"螢幕 {screen['id']}: {screen['resolution']}{primary_text}")
+        
+        print("="*50)
+        
+        # 如果只有一個螢幕，自動選擇
+        if len(screens) == 1:
+            print("只偵測到一個螢幕，自動選擇螢幕 1")
+            return 1, screens[0]
+        
+        while True:
+            try:
+                choice = input(f"請選擇要使用的螢幕 (1-{len(screens)}) [預設: 1]: ").strip()
+                
+                # 如果使用者直接按 Enter，使用預設值 1
+                if not choice:
+                    choice = "1"
+                
+                screen_id = int(choice)
+                
+                if 1 <= screen_id <= len(screens):
+                    selected_screen = next(s for s in screens if s['id'] == screen_id)
+                    print(f"✅ 已選擇螢幕 {screen_id}: {selected_screen['resolution']}")
+                    return screen_id, selected_screen
+                else:
+                    print(f"❌ 請輸入 1 到 {len(screens)} 之間的數字")
+                    
+            except ValueError:
+                print("❌ 請輸入有效的數字")
+            except KeyboardInterrupt:
+                print("\n程式已取消")
+                return None, None
+    
+    @staticmethod
+    def get_screen_info(screen_id):
+        """獲取指定螢幕的詳細資訊"""
+        screens = ScreenManager.detect_screens()
+        for screen in screens:
+            if screen['id'] == screen_id:
+                return screen
+        return None
+
 class YahooAdReplacer:
-    def __init__(self, headless=False):
+    def __init__(self, headless=False, screen_id=1):
+        self.screen_id = screen_id
         self.setup_driver(headless)
         self.load_replace_images()
         
@@ -60,15 +223,76 @@ class YahooAdReplacer:
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         
+        # 根據作業系統設定螢幕位置
+        system = platform.system()
+        
+        if system == "Darwin":  # macOS
+            # macOS 多螢幕支援
+            if self.screen_id > 1:
+                # 計算螢幕偏移量 (假設每個螢幕寬度為1920px)
+                screen_offset = (self.screen_id - 1) * 1920
+                chrome_options.add_argument(f'--window-position={screen_offset},0')
+            
+        elif system == "Windows":
+            # Windows 多螢幕支援
+            if self.screen_id > 1:
+                screen_offset = (self.screen_id - 1) * 1920
+                chrome_options.add_argument(f'--window-position={screen_offset},0')
+        
         if FULLSCREEN_MODE:
             chrome_options.add_argument('--start-maximized')
-            chrome_options.add_argument('--start-fullscreen')
+            if not headless:
+                chrome_options.add_argument('--start-fullscreen')
         
         self.driver = webdriver.Chrome(options=chrome_options)
         
-        # 確保瀏覽器為全螢幕模式
-        if not headless and FULLSCREEN_MODE:
-            self.driver.fullscreen_window()
+        # 確保瀏覽器在正確的螢幕上
+        if not headless:
+            self.move_to_screen()
+    
+    def move_to_screen(self):
+        """將瀏覽器移動到指定螢幕"""
+        try:
+            system = platform.system()
+            
+            if system == "Darwin":  # macOS
+                # 使用 AppleScript 移動 Chrome 到指定螢幕
+                applescript = f'''
+                tell application "Google Chrome"
+                    activate
+                    set bounds of front window to {{0, 0, 1920, 1080}}
+                end tell
+                '''
+                
+                if self.screen_id > 1:
+                    # 計算螢幕偏移
+                    screen_offset = (self.screen_id - 1) * 1920
+                    applescript = f'''
+                    tell application "Google Chrome"
+                        activate
+                        set bounds of front window to {{{screen_offset}, 0, {screen_offset + 1920}, 1080}}
+                    end tell
+                    '''
+                
+                subprocess.run(['osascript', '-e', applescript], 
+                             capture_output=True, text=True)
+                
+            elif system == "Windows":
+                # Windows 使用 Selenium 的視窗管理
+                if self.screen_id > 1:
+                    screen_offset = (self.screen_id - 1) * 1920
+                    self.driver.set_window_position(screen_offset, 0)
+                    
+            # 確保全螢幕模式
+            if FULLSCREEN_MODE:
+                time.sleep(1)  # 等待視窗移動完成
+                self.driver.fullscreen_window()
+                
+            print(f"✅ Chrome 已移動到螢幕 {self.screen_id}")
+            
+        except Exception as e:
+            print(f"移動瀏覽器到螢幕 {self.screen_id} 失敗: {e}")
+            print("將使用預設螢幕位置")
     
     def load_replace_images(self):
         """載入替換圖片並解析尺寸"""
@@ -972,9 +1196,6 @@ class YahooAdReplacer:
             return []
     
     def take_screenshot(self, page_title=None):
-        import platform
-        import subprocess
-        
         if not os.path.exists(SCREENSHOT_FOLDER):
             os.makedirs(SCREENSHOT_FOLDER)
             
@@ -1006,16 +1227,24 @@ class YahooAdReplacer:
             system = platform.system()
             
             if system == "Windows":
-                # Windows 系統使用 pyautogui
+                # Windows 多螢幕截圖
                 try:
                     import pyautogui
-                    # 獲取螢幕尺寸
-                    screen_width, screen_height = pyautogui.size()
-                    # 截取整個螢幕
-                    screenshot = pyautogui.screenshot()
+                    
+                    # 如果指定了特定螢幕，計算該螢幕的區域
+                    if self.screen_id > 1:
+                        # 假設每個螢幕寬度為1920px
+                        screen_offset = (self.screen_id - 1) * 1920
+                        # 截取指定螢幕區域
+                        screenshot = pyautogui.screenshot(region=(screen_offset, 0, 1920, 1080))
+                    else:
+                        # 截取主螢幕
+                        screenshot = pyautogui.screenshot()
+                    
                     screenshot.save(filepath)
-                    print(f"截圖保存: {filepath}")
+                    print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
                     return filepath
+                    
                 except ImportError:
                     print("pyautogui 未安裝，使用 Selenium 截圖")
                     self.driver.save_screenshot(filepath)
@@ -1028,51 +1257,64 @@ class YahooAdReplacer:
                     return filepath
                     
             elif system == "Darwin":  # macOS
-                # 獲取Chrome所在的螢幕編號並截圖
-                # 使用AppleScript獲取Chrome窗口位置
-                get_display_cmd = '''osascript -e '
-                    tell application "Google Chrome"
-                        activate
-                        set windowBounds to bounds of front window
-                        set screenWidth to item 3 of windowBounds
-                        return screenWidth
-                    end tell
-                ' '''
-                
-                display_result = subprocess.run(get_display_cmd, shell=True, capture_output=True, text=True)
-                
-                if display_result.returncode == 0:
-                    # 使用-D參數指定螢幕（預設為主螢幕）
+                # macOS 多螢幕截圖
+                try:
+                    # 使用 screencapture 的 -D 參數指定螢幕
                     result = subprocess.run([
                         'screencapture', 
-                        '-D', '1',  # 截取第一個螢幕
+                        '-D', str(self.screen_id),  # 指定螢幕編號
                         filepath
                     ], capture_output=True, text=True)
-                else:
-                    # 如果無法獲取螢幕資訊，使用全螢幕截圖
-                    result = subprocess.run([
-                        'screencapture', 
-                        filepath
-                    ], capture_output=True, text=True)
-                
-                if result.returncode == 0 and os.path.exists(filepath):
-                    print(f"截圖保存: {filepath}")
-                    return filepath
-                else:
-                    # 如果互動截圖失敗，回退到Selenium截圖
-                    print("互動截圖失敗，使用Selenium截圖")
+                    
+                    if result.returncode == 0 and os.path.exists(filepath):
+                        print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
+                        return filepath
+                    else:
+                        print(f"指定螢幕 {self.screen_id} 截圖失敗，嘗試全螢幕截圖")
+                        # 回退到全螢幕截圖
+                        result = subprocess.run([
+                            'screencapture', 
+                            filepath
+                        ], capture_output=True, text=True)
+                        
+                        if result.returncode == 0 and os.path.exists(filepath):
+                            print(f"截圖保存 (全螢幕): {filepath}")
+                            return filepath
+                        else:
+                            raise Exception("screencapture 命令失敗")
+                            
+                except Exception as e:
+                    print(f"系統截圖失敗: {e}，使用 Selenium 截圖")
                     self.driver.save_screenshot(filepath)
                     print(f"截圖保存: {filepath}")
                     return filepath
                     
-            else:  # Linux 或其他系統
-                # 使用 Selenium 截圖
-                self.driver.save_screenshot(filepath)
-                print(f"截圖保存: {filepath}")
-                return filepath
+            else:  # Linux
+                # Linux 多螢幕截圖
+                try:
+                    # 使用 import 命令截取指定螢幕
+                    display = f":0.{self.screen_id - 1}" if self.screen_id > 1 else ":0"
+                    result = subprocess.run([
+                        'import', 
+                        '-window', 'root',
+                        '-display', display,
+                        filepath
+                    ], capture_output=True, text=True)
+                    
+                    if result.returncode == 0 and os.path.exists(filepath):
+                        print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
+                        return filepath
+                    else:
+                        raise Exception("import 命令失敗")
+                        
+                except Exception as e:
+                    print(f"系統截圖失敗: {e}，使用 Selenium 截圖")
+                    self.driver.save_screenshot(filepath)
+                    print(f"截圖保存: {filepath}")
+                    return filepath
                 
         except Exception as e:
-            print(f"系統截圖失敗: {e}，使用Selenium截圖")
+            print(f"截圖失敗: {e}，使用 Selenium 截圖")
             try:
                 self.driver.save_screenshot(filepath)
                 print(f"截圖保存: {filepath}")
@@ -1085,7 +1327,15 @@ class YahooAdReplacer:
         self.driver.quit()
 
 def main():
-    bot = YahooAdReplacer(headless=False)
+    # 偵測並選擇螢幕
+    screen_id, selected_screen = ScreenManager.select_screen()
+    
+    if screen_id is None:
+        print("未選擇螢幕，程式結束")
+        return
+    
+    print(f"\n正在啟動 Chrome 瀏覽器到螢幕 {screen_id}...")
+    bot = YahooAdReplacer(headless=False, screen_id=screen_id)
     
     try:
         # 使用 Yahoo 新聞熱門景點版面的 URL
@@ -1184,5 +1434,54 @@ def main():
     finally:
         bot.close()
 
+def test_screen_setup():
+    """測試螢幕設定功能"""
+    print("測試螢幕偵測功能...")
+    
+    # 偵測螢幕
+    screens = ScreenManager.detect_screens()
+    print(f"偵測到 {len(screens)} 個螢幕:")
+    
+    for screen in screens:
+        primary_text = " (主螢幕)" if screen['primary'] else ""
+        print(f"  螢幕 {screen['id']}: {screen['resolution']}{primary_text}")
+    
+    # 讓使用者選擇螢幕進行測試
+    screen_id, selected_screen = ScreenManager.select_screen()
+    
+    if screen_id is None:
+        return
+    
+    print(f"\n正在測試螢幕 {screen_id}...")
+    
+    # 創建測試用的瀏覽器實例
+    test_bot = YahooAdReplacer(headless=False, screen_id=screen_id)
+    
+    try:
+        # 開啟測試頁面
+        test_bot.driver.get("https://www.google.com")
+        time.sleep(3)
+        
+        # 測試截圖功能
+        print("測試截圖功能...")
+        screenshot_path = test_bot.take_screenshot("測試頁面")
+        
+        if screenshot_path:
+            print(f"✅ 螢幕 {screen_id} 設定成功！")
+            print(f"測試截圖已保存: {screenshot_path}")
+        else:
+            print(f"❌ 螢幕 {screen_id} 截圖失敗")
+        
+        input("按 Enter 鍵關閉測試...")
+        
+    finally:
+        test_bot.close()
+
 if __name__ == "__main__":
-    main()
+    import sys
+    
+    # 檢查是否有命令列參數
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        test_screen_setup()
+    else:
+        main()

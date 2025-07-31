@@ -30,8 +30,7 @@ except ImportError:
     REPLACE_IMAGE_FOLDER = "replace_image"
     DEFAULT_IMAGE = "mini.jpg"
     MINI_IMAGE = "mini.jpg"
-    BASE_URL = "https://travel.udn.com/travel/index"
-    UDN_BASE_URL = "https://travel.udn.com/travel/index"  # 聯合報 旅遊網站
+    BASE_URL = "https://travel.ettoday.net"
     NEWS_COUNT = 20
     TARGET_AD_SIZES = [{"width": 970, "height": 90}, {"width": 986, "height": 106}]
     IMAGE_USAGE_COUNT = {"google_970x90.jpg": 5, "google_986x106.jpg": 3}
@@ -204,18 +203,34 @@ class ScreenManager:
                 return screen
         return None
 
-class UdnAdReplacer:
+class EttodayAdReplacer:
     def __init__(self, headless=False, screen_id=1):
+        print("正在初始化 ETtoday 廣告替換器...")
         self.screen_id = screen_id
         self.setup_driver(headless)
         self.load_replace_images()
+        print("ETtoday 廣告替換器初始化完成！")
         
     def setup_driver(self, headless):
+        print("正在設定 Chrome 瀏覽器...")
         chrome_options = Options()
+        
         if headless or HEADLESS_MODE:
             chrome_options.add_argument('--headless')
+        
+        # 基本設置
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-web-security')
+        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+        
+        # 確保能正確顯示內容
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-plugins')
+        chrome_options.add_argument('--disable-images=false')  # 確保圖片載入
+        
+        # 設置窗口大小（用於截圖）
+        chrome_options.add_argument('--window-size=1920,1080')
         
         # 根據作業系統設定螢幕位置
         system = platform.system()
@@ -233,16 +248,22 @@ class UdnAdReplacer:
                 screen_offset = (self.screen_id - 1) * 1920
                 chrome_options.add_argument(f'--window-position={screen_offset},0')
         
-        if FULLSCREEN_MODE:
+        if not headless:
             chrome_options.add_argument('--start-maximized')
-            if not headless:
+            if FULLSCREEN_MODE:
                 chrome_options.add_argument('--start-fullscreen')
         
+        print("正在啟動 Chrome 瀏覽器...")
         self.driver = webdriver.Chrome(options=chrome_options)
+        print("Chrome 瀏覽器啟動成功！")
         
         # 確保瀏覽器在正確的螢幕上
         if not headless:
             self.move_to_screen()
+        
+        # 設置頁面載入超時
+        self.driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
+        print("瀏覽器設置完成！")
     
     def move_to_screen(self):
         """將瀏覽器移動到指定螢幕"""
@@ -276,11 +297,28 @@ class UdnAdReplacer:
                 if self.screen_id > 1:
                     screen_offset = (self.screen_id - 1) * 1920
                     self.driver.set_window_position(screen_offset, 0)
+            
+            # 設置瀏覽器窗口
+            try:
+                # 最大化窗口
+                self.driver.maximize_window()
+                print("瀏覽器窗口已最大化")
+                
+                if FULLSCREEN_MODE:
+                    # 設置全螢幕模式
+                    time.sleep(1)  # 等待視窗移動完成
+                    self.driver.fullscreen_window()
+                    print("瀏覽器已設置為全螢幕模式")
                     
-            # 確保全螢幕模式
-            if FULLSCREEN_MODE:
-                time.sleep(1)  # 等待視窗移動完成
-                self.driver.fullscreen_window()
+                # 等待窗口調整完成
+                time.sleep(2)
+                
+                # 獲取當前窗口大小
+                window_size = self.driver.get_window_size()
+                print(f"當前瀏覽器窗口大小: {window_size['width']}x{window_size['height']}")
+                
+            except Exception as e:
+                print(f"設置瀏覽器窗口失敗: {e}")
                 
             print(f"✅ Chrome 已移動到螢幕 {self.screen_id}")
             
@@ -334,140 +372,113 @@ class UdnAdReplacer:
     
     def get_random_news_urls(self, base_url, count=5):
         try:
-            print(f"正在載入網頁: {base_url}")
             self.driver.get(base_url)
-            print(f"等待 {WAIT_TIME} 秒讓頁面載入...")
             time.sleep(WAIT_TIME)
             
-            # 額外等待時間確保頁面完全載入
-            print("額外等待 5 秒確保頁面完全載入...")
-            time.sleep(5)
-            
-            # 檢查頁面是否成功載入
-            page_title = self.driver.title
-            print(f"頁面標題: {page_title}")
-            
-            # 檢查是否有錯誤頁面
-            if "404" in page_title or "錯誤" in page_title or "Error" in page_title:
-                print("❌ 頁面載入失敗，可能是404錯誤")
-                return []
-            
-            # 聯合報旅遊網站的連結選擇器
+            # ETtoday 旅遊雲的文章連結選擇器
             link_selectors = [
-                "a[href*='/travel/story/']",                    # 旅遊故事連結
-                "a[href*='/travel/article/']",                  # 旅遊文章連結
-                "a[href*='/travel/spot/']",                     # 景點連結
-                "a[href*='/travel/food/']",                     # 美食連結
-                "a[href*='/travel/hotel/']",                    # 住宿連結
-                "a[href*='/travel/activity/']",                 # 活動連結
-                "a[href*='/travel/']",                          # 所有旅遊連結
-                "h3 a[href*='travel.udn.com']",                 # 標題中的旅遊連結
-                "h2 a[href*='travel.udn.com']",                 # 二級標題中的旅遊連結
-                "a[href*='travel.udn.com'][href*='.html']",     # 所有 HTML 旅遊連結
-                "a[href*='travel.udn.com']",                    # 旅遊網域連結
-                "a[href*='travel']",                            # 包含travel的連結
-                "a[href*='旅遊']",                              # 包含旅遊的連結
-                "a[href*='景點']",                              # 包含景點的連結
-                "a[href*='美食']",                              # 包含美食的連結
-                "a[href*='住宿']",                              # 包含住宿的連結
-                "a[href*='活動']",                              # 包含活動的連結
-                "a[href*='story']",                             # 故事連結
-                "a[href*='article']",                           # 文章連結
+                "a[href*='/article/']",
+                "a[href*='article']"
             ]
             
             news_urls = []
-            print(f"開始搜尋旅遊連結，使用 {len(link_selectors)} 個選擇器...")
             
-            for i, selector in enumerate(link_selectors):
+            for selector in link_selectors:
                 links = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                print(f"選擇器 {i+1}: '{selector}' 找到 {len(links)} 個連結")
                 for link in links:
                     href = link.get_attribute('href')
-                    if href and href not in news_urls and 'travel.udn.com' in href:
-                        # 檢查是否為有效的旅遊文章連結
-                        is_valid_travel = any(keyword in href.lower() for keyword in [
-                            'travel.udn.com', 'story', 'article', 'spot', 'food', 'hotel', 'activity',
-                            'travel', '旅遊', '景點', '美食', '住宿', '活動'
-                        ])
-                        
-                        # 排除明顯的非旅遊連結
-                        is_not_travel = any(exclude in href.lower() for exclude in [
-                            '/news/', '/opinion/', '/sports/', '/entertainment/', '/society/', 
-                            '/politics/', '/international/', '/business/', '/tech/',
-                            'login', 'signin', 'register', 'account', 'profile', 'settings', 
-                            'help', 'about', 'contact', 'privacy', 'terms', 'index'
-                        ])
-                        
-                        # 確保是具體的旅遊文章而不是分類頁面
-                        is_article_page = ('.html' in href or '/story/' in href or '/article/' in href) and not href.endswith('/')
-                        
-                        if is_valid_travel and not is_not_travel and is_article_page:
-                            news_urls.append(href)
-                            print(f"✅ 找到旅遊文章連結: {href}")
-                        else:
-                            print(f"❌ 排除連結: {href} (valid:{is_valid_travel}, not_travel:{is_not_travel}, article:{is_article_page})")
+                    if href and href not in news_urls and 'travel.ettoday.net/article' in href:
+                        news_urls.append(href)
                         
             return random.sample(news_urls, min(NEWS_COUNT, len(news_urls)))
         except Exception as e:
-            print(f"獲取旅遊連結失敗: {e}")
+            print(f"獲取新聞連結失敗: {e}")
             return []
+    
+
+    def analyze_page_sizes(self):
+        """分析頁面上所有元素的尺寸分佈"""
+        try:
+            size_distribution = self.driver.execute_script("""
+                var sizeMap = {};
+                var elements = document.querySelectorAll('*');
+                
+                for (var i = 0; i < elements.length; i++) {
+                    var element = elements[i];
+                    var rect = element.getBoundingClientRect();
+                    var width = Math.round(rect.width);
+                    var height = Math.round(rect.height);
+                    
+                    // 只記錄可見且有一定尺寸的元素
+                    if (width > 50 && height > 50 && rect.width > 0 && rect.height > 0) {
+                        var sizeKey = width + 'x' + height;
+                        if (!sizeMap[sizeKey]) {
+                            sizeMap[sizeKey] = {
+                                count: 0,
+                                elements: []
+                            };
+                        }
+                        sizeMap[sizeKey].count++;
+                        if (sizeMap[sizeKey].elements.length < 3) {
+                            sizeMap[sizeKey].elements.push({
+                                tag: element.tagName.toLowerCase(),
+                                class: element.className || '',
+                                id: element.id || ''
+                            });
+                        }
+                    }
+                }
+                
+                return sizeMap;
+            """)
+            
+            # 顯示常見尺寸
+            common_sizes = sorted(size_distribution.items(), key=lambda x: x[1]['count'], reverse=True)[:10]
+            print("頁面上最常見的元素尺寸:")
+            for size, info in common_sizes:
+                print(f"  {size}: {info['count']} 個元素")
+                if info['elements']:
+                    example = info['elements'][0]
+                    print(f"    例如: <{example['tag']} class='{example['class'][:30]}' id='{example['id'][:20]}'>")
+            
+        except Exception as e:
+            print(f"分析頁面尺寸失敗: {e}")
     
     def scan_entire_page_for_ads(self, target_width, target_height):
         """掃描整個網頁尋找符合尺寸的廣告元素"""
         print(f"開始掃描整個網頁尋找 {target_width}x{target_height} 的廣告...")
         
-        # 專門獲取 Google Ads 相關元素
+        # 獲取所有可見的元素
         all_elements = self.driver.execute_script("""
-            function getGoogleAdsElements() {
-                var googleAdsElements = [];
-                
-                // 1. 直接選擇 Google Ads 容器
-                var googleAdContainers = document.querySelectorAll('div[id*="google_ads"], div[id*="ads-"], div[class*="google"], div[class*="ads"]');
-                for (var i = 0; i < googleAdContainers.length; i++) {
-                    googleAdsElements.push(googleAdContainers[i]);
-                }
-                
-                // 2. 選擇 Google Ads iframe
-                var googleIframes = document.querySelectorAll('iframe[src*="googleads"], iframe[src*="googlesyndication"], iframe[src*="doubleclick"]');
-                for (var i = 0; i < googleIframes.length; i++) {
-                    googleAdsElements.push(googleIframes[i]);
-                }
-                
-                // 3. 選擇包含 Google Ads 腳本的元素
-                var scriptElements = document.querySelectorAll('script[src*="google"]');
-                for (var i = 0; i < scriptElements.length; i++) {
-                    var parent = scriptElements[i].parentElement;
-                    if (parent && !googleAdsElements.includes(parent)) {
-                        googleAdsElements.push(parent);
-                    }
-                }
-                
-                // 4. 選擇包含 googletag 腳本的元素
-                var allScripts = document.querySelectorAll('script');
-                for (var i = 0; i < allScripts.length; i++) {
-                    var script = allScripts[i];
-                    if (script.textContent && script.textContent.includes('googletag')) {
-                        var parent = script.parentElement;
-                        if (parent && !googleAdsElements.includes(parent)) {
-                            googleAdsElements.push(parent);
+            function getAllVisibleElements() {
+                var all = [];
+                var walker = document.createTreeWalker(
+                    document.body,
+                    NodeFilter.SHOW_ELEMENT,
+                    {
+                        acceptNode: function(node) {
+                            // 只接受可見的元素
+                            var style = window.getComputedStyle(node);
+                            if (style.display === 'none' || 
+                                style.visibility === 'hidden' || 
+                                style.opacity === '0') {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            return NodeFilter.FILTER_ACCEPT;
                         }
                     }
-                }
+                );
                 
-                // 5. 選擇 udn-ads 類別的元素（聯合報特定的廣告容器）
-                var udnAdsElements = document.querySelectorAll('.udn-ads, [class*="udn-ads"]');
-                for (var i = 0; i < udnAdsElements.length; i++) {
-                    if (!googleAdsElements.includes(udnAdsElements[i])) {
-                        googleAdsElements.push(udnAdsElements[i]);
-                    }
+                var node;
+                while (node = walker.nextNode()) {
+                    all.push(node);
                 }
-                
-                return googleAdsElements;
+                return all;
             }
-            return getGoogleAdsElements();
+            return getAllVisibleElements();
         """)
         
-        print(f"找到 {len(all_elements)} 個 Google Ads 元素，開始檢查尺寸...")
+        print(f"找到 {len(all_elements)} 個可見元素，開始檢查尺寸...")
         
         matching_elements = []
         
@@ -486,111 +497,150 @@ class UdnAdReplacer:
                     };
                 """, element)
                 
-                # 嚴格檢查尺寸是否完全匹配
+                # 允許小幅度的尺寸誤差（±2像素）
                 if (size_info and 
                     size_info['visible'] and
-                    size_info['width'] == target_width and 
-                    size_info['height'] == target_height and
-                    size_info['width'] > 0 and 
-                    size_info['height'] > 0):
+                    abs(size_info['width'] - target_width) <= 2 and 
+                    abs(size_info['height'] - target_height) <= 2):
                     
-                    # 專門檢查 Google Ads
-                    is_google_ad = self.driver.execute_script("""
+                    # 進一步檢查是否可能是廣告
+                    is_ad = self.driver.execute_script("""
                         var element = arguments[0];
                         var tagName = element.tagName.toLowerCase();
                         var className = element.className || '';
                         var id = element.id || '';
                         var src = element.src || '';
                         
-                        // 檢查是否為 Google Ads 容器
-                        var isGoogleAdContainer = (
-                            id.includes('google_ads') || 
-                            id.includes('ads-') ||
-                            className.includes('google') ||
-                            className.includes('ads') ||
-                            id.includes('ads')
-                        );
+                        // 檢查是否包含廣告相關的關鍵字
+                        var adKeywords = ['ad', 'advertisement', 'banner', 'google', 'ads', 'ad-', '-ad'];
+                        var hasAdKeyword = adKeywords.some(function(keyword) {
+                            return className.toLowerCase().includes(keyword) ||
+                                   id.toLowerCase().includes(keyword) ||
+                                   src.toLowerCase().includes(keyword);
+                        });
                         
-                        // 檢查是否包含 Google Ads iframe
-                        var hasGoogleIframe = element.querySelector('iframe[src*="googleads"], iframe[src*="googlesyndication"], iframe[src*="doubleclick"]');
+                        // 檢查是否為圖片、iframe 或 div
+                        var isImageElement = tagName === 'img' || tagName === 'iframe' || tagName === 'div';
                         
-                        // 檢查是否為 Google Ads iframe
-                        var isGoogleIframe = tagName === 'iframe' && (
-                            src.includes('googleads') || 
-                            src.includes('googlesyndication') || 
-                            src.includes('doubleclick')
-                        );
+                        // 檢查是否有背景圖片
+                        var style = window.getComputedStyle(element);
+                        var hasBackgroundImage = style.backgroundImage && style.backgroundImage !== 'none';
                         
-                        // 檢查是否有 Google Ads 腳本
-                        var hasGoogleScript = element.querySelector('script[src*="google"]');
-                        
-                        // 檢查是否包含 googletag 腳本
-                        var hasGoogletagScript = false;
-                        var scripts = element.querySelectorAll('script');
-                        for (var i = 0; i < scripts.length; i++) {
-                            if (scripts[i].textContent && scripts[i].textContent.includes('googletag')) {
-                                hasGoogletagScript = true;
-                                break;
-                            }
-                        }
-                        
-                        return isGoogleAdContainer || hasGoogleIframe || isGoogleIframe || hasGoogleScript || hasGoogletagScript;
+                        return hasAdKeyword || isImageElement || hasBackgroundImage;
                     """, element)
                     
-                    if is_google_ad:
-                        # 再次驗證尺寸
-                        final_check = self.driver.execute_script("""
-                            var element = arguments[0];
-                            var rect = element.getBoundingClientRect();
-                            var computedStyle = window.getComputedStyle(element);
-                            
-                            return {
-                                width: Math.round(rect.width),
-                                height: Math.round(rect.height),
-                                display: computedStyle.display,
-                                visibility: computedStyle.visibility,
-                                position: computedStyle.position,
-                                zIndex: computedStyle.zIndex
-                            };
-                        """, element)
+                    if is_ad:
+                        matching_elements.append({
+                            'element': element,
+                            'width': size_info['width'],
+                            'height': size_info['height'],
+                            'position': f"top:{size_info['top']:.0f}, left:{size_info['left']:.0f}"
+                        })
+                        print(f"找到符合尺寸的廣告元素: {size_info['width']}x{size_info['height']} at {size_info['top']:.0f},{size_info['left']:.0f}")
+                
+                # 每檢查100個元素顯示進度
+                if (i + 1) % 100 == 0:
+                    print(f"已檢查 {i + 1}/{len(all_elements)} 個元素...")
+                    
+            except Exception as e:
+                continue
+        
+        print(f"掃描完成，找到 {len(matching_elements)} 個符合尺寸的廣告元素")
+        return matching_elements
+        
+        # 如果直接選擇器沒找到，再進行全頁面掃描
+        print("廣告選擇器未找到目標，開始全頁面掃描...")
+        
+        # 獲取所有可見的元素
+        all_elements = self.driver.execute_script("""
+            function getAllVisibleElements() {
+                var all = [];
+                var walker = document.createTreeWalker(
+                    document.body,
+                    NodeFilter.SHOW_ELEMENT,
+                    {
+                        acceptNode: function(node) {
+                            // 只接受可見的元素
+                            var style = window.getComputedStyle(node);
+                            if (style.display === 'none' || 
+                                style.visibility === 'hidden' || 
+                                style.opacity === '0') {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                    }
+                );
+                
+                var node;
+                while (node = walker.nextNode()) {
+                    all.push(node);
+                }
+                return all;
+            }
+            return getAllVisibleElements();
+        """)
+        
+        print(f"找到 {len(all_elements)} 個可見元素，開始檢查尺寸...")
+        
+        matching_elements = []
+        
+        for i, element in enumerate(all_elements):
+            try:
+                # 檢查元素尺寸
+                size_info = self.driver.execute_script("""
+                    var element = arguments[0];
+                    var rect = element.getBoundingClientRect();
+                    return {
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height),
+                        top: rect.top,
+                        left: rect.left,
+                        visible: rect.width > 0 && rect.height > 0,
+
+                    };
+                """, element)
+                
+                # 允許小幅度的尺寸誤差（±2像素）
+                if (size_info and 
+                    size_info['visible'] and
+                    abs(size_info['width'] - target_width) <= 2 and 
+                    abs(size_info['height'] - target_height) <= 2):
+                    
+                    # 進一步檢查是否可能是廣告
+                    is_ad = self.driver.execute_script("""
+                        var element = arguments[0];
+                        var tagName = element.tagName.toLowerCase();
+                        var className = element.className || '';
+                        var id = element.id || '';
+                        var src = element.src || '';
                         
-                        # 最終尺寸驗證 - 在 JavaScript 中進行
-                        final_verification = self.driver.execute_script("""
-                            var element = arguments[0];
-                            var targetWidth = arguments[1];
-                            var targetHeight = arguments[2];
-                            
-                            var rect = element.getBoundingClientRect();
-                            var computedStyle = window.getComputedStyle(element);
-                            
-                            var widthDiff = Math.abs(Math.round(rect.width) - targetWidth);
-                            var heightDiff = Math.abs(Math.round(rect.height) - targetHeight);
-                            var isExactMatch = widthDiff <= 1 && heightDiff <= 1;
-                            
-                            return {
-                                width: Math.round(rect.width),
-                                height: Math.round(rect.height),
-                                display: computedStyle.display,
-                                visibility: computedStyle.visibility,
-                                isExactMatch: isExactMatch,
-                                isValid: isExactMatch && computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden'
-                            };
-                        """, element, target_width, target_height)
+                        // 檢查是否包含廣告相關的關鍵字
+                        var adKeywords = ['ad', 'advertisement', 'banner', 'google', 'ads', 'ad-', '-ad'];
+                        var hasAdKeyword = adKeywords.some(function(keyword) {
+                            return className.toLowerCase().includes(keyword) ||
+                                   id.toLowerCase().includes(keyword) ||
+                                   src.toLowerCase().includes(keyword);
+                        });
                         
-                        if final_verification['isValid']:
-                            matching_elements.append({
-                                'element': element,
-                                'width': final_verification['width'],
-                                'height': final_verification['height'],
-                                'position': f"top:{size_info['top']:.0f}, left:{size_info['left']:.0f}",
-                                'display': final_verification['display'],
-                                'visibility': final_verification['visibility']
-                            })
-                            print(f"✅ 確認找到 {target_width}x{target_height} Google Ads: {final_verification['width']}x{final_verification['height']} at {size_info['top']:.0f},{size_info['left']:.0f}")
-                        else:
-                            print(f"❌ 尺寸不匹配: 期望 {target_width}x{target_height}, 實際 {final_verification['width']}x{final_verification['height']}")
-                    else:
-                        print(f"❌ 不是 Google Ads: {size_info['width']}x{size_info['height']}")
+                        // 檢查是否為圖片、iframe 或 div
+                        var isImageElement = tagName === 'img' || tagName === 'iframe' || tagName === 'div';
+                        
+                        // 檢查是否有背景圖片
+                        var style = window.getComputedStyle(element);
+                        var hasBackgroundImage = style.backgroundImage && style.backgroundImage !== 'none';
+                        
+                        return hasAdKeyword || isImageElement || hasBackgroundImage;
+                    """, element)
+                    
+                    if is_ad:
+                        matching_elements.append({
+                            'element': element,
+                            'width': size_info['width'],
+                            'height': size_info['height'],
+                            'position': f"top:{size_info['top']:.0f}, left:{size_info['left']:.0f}"
+                        })
+                        print(f"找到符合尺寸的廣告元素: {size_info['width']}x{size_info['height']} at {size_info['top']:.0f},{size_info['left']:.0f}")
                 
                 # 每檢查100個元素顯示進度
                 if (i + 1) % 100 == 0:
@@ -604,7 +654,10 @@ class UdnAdReplacer:
     
     def get_button_style(self):
         """根據配置返回按鈕樣式"""
-        button_style = getattr(self, 'button_style', BUTTON_STYLE)
+        try:
+            button_style = BUTTON_STYLE
+        except NameError:
+            button_style = "dots"  # 預設樣式
         
         # 預先定義的按鈕樣式
         # 統一的資訊按鈕樣式 - 使用 Google 標準設計
@@ -652,7 +705,7 @@ class UdnAdReplacer:
         
         return button_styles.get(button_style, button_styles["dots"])
 
-    def replace_ad_content(self, element, image_data, target_width, target_height):
+    def replace_ad_content(self, element, image_data, target_width, target_height, ad_info=None):
         try:
             # 獲取原始尺寸
             original_info = self.driver.execute_script("""
@@ -665,9 +718,10 @@ class UdnAdReplacer:
             if not original_info:
                 return False
             
-            # 檢查是否符合目標尺寸
-            if (original_info['width'] != target_width or 
-                original_info['height'] != target_height):
+            # 檢查是否符合目標尺寸（允許±2像素誤差）
+            if (abs(original_info['width'] - target_width) > 2 or 
+                abs(original_info['height'] - target_height) > 2):
+                print(f"尺寸不匹配: 期望 {target_width}x{target_height}, 實際 {original_info['width']}x{original_info['height']}")
                 return False
             
             # 獲取按鈕樣式
@@ -677,7 +731,7 @@ class UdnAdReplacer:
             info_button_html = button_style["info_button"]["html"]
             info_button_style = button_style["info_button"]["style"]
             
-            # 只替換圖片，保留廣告按鈕
+            # 只替換圖片，保留廣告按鈕，支援動態尺寸調整
             success = self.driver.execute_script("""
                 // 添加 Google 廣告標準樣式
                 if (!document.getElementById('google_ad_styles')) {
@@ -769,33 +823,9 @@ class UdnAdReplacer:
                 var closeButtonStyle = arguments[5];
                 var infoButtonHtml = arguments[6];
                 var infoButtonStyle = arguments[7];
+
                 
                 if (!container) return false;
-                
-                // 保存原始廣告內容 - 針對 GDN 廣告結構優化
-                var originalContent = {
-                    html: container.innerHTML,
-                    style: container.getAttribute('style') || '',
-                    className: container.getAttribute('class') || '',
-                    id: container.getAttribute('id') || '',
-                    outerHTML: container.outerHTML,
-                    // 特別保存 iframe 的狀態
-                    iframes: []
-                };
-                
-                // 保存所有 iframe 的原始狀態
-                var iframes = container.querySelectorAll('iframe');
-                for (var i = 0; i < iframes.length; i++) {
-                    var iframe = iframes[i];
-                    originalContent.iframes.push({
-                        src: iframe.src,
-                        style: iframe.getAttribute('style') || '',
-                        display: window.getComputedStyle(iframe).display,
-                        visibility: window.getComputedStyle(iframe).visibility
-                    });
-                }
-                
-                container.setAttribute('data-original-content', JSON.stringify(originalContent));
                 
                 // 確保 container 是 relative
                 if (window.getComputedStyle(container).position === 'static') {
@@ -843,6 +873,10 @@ class UdnAdReplacer:
                         if (!img.getAttribute('data-original-src')) {
                             img.setAttribute('data-original-src', img.src);
                         }
+                        // 保存原始樣式以便復原
+                        if (!img.getAttribute('data-original-style')) {
+                            img.setAttribute('data-original-style', img.style.cssText || '');
+                        }
                         // 替換圖片，保持原始尺寸和佈局
                         img.src = newImageSrc;
                         img.style.objectFit = 'contain';
@@ -858,37 +892,38 @@ class UdnAdReplacer:
                         img.style.border = 'none';
                         img.style.outline = 'none';
                         replacedCount++;
-                    
-                    // 確保img的父層是relative
-                    var imgParent = img.parentElement || container;
-                    if (window.getComputedStyle(imgParent).position === 'static') {
-                        imgParent.style.position = 'relative';
+                        
+                        // 確保img的父層是relative
+                        var imgParent = img.parentElement || container;
+                        if (window.getComputedStyle(imgParent).position === 'static') {
+                            imgParent.style.position = 'relative';
+                        }
+                        
+                        // 先移除舊的按鈕
+                        ['close_button', 'abgb'].forEach(function(id){
+                            var old = imgParent.querySelector('#'+id);
+                            if(old) old.remove();
+                        });
+                        
+                        // 叉叉 - 貼著替換圖片的右上角
+                        var closeButton = document.createElement('div');
+                        closeButton.id = 'close_button';
+                        closeButton.innerHTML = closeButtonHtml;
+                        closeButton.style.cssText = closeButtonStyle;
+                        
+                        // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
+                        var abgb = document.createElement('div');
+                        abgb.id = 'abgb';
+                        abgb.className = 'abgb';
+                        abgb.innerHTML = infoButtonHtml;
+                        abgb.style.cssText = infoButtonStyle;
+                        
+                        // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
+                        imgParent.appendChild(abgb);
+                        imgParent.appendChild(closeButton);
                     }
-                    
-                    // 先移除舊的按鈕
-                    ['close_button', 'abgb'].forEach(function(id){
-                        var old = imgParent.querySelector('#'+id);
-                        if(old) old.remove();
-                    });
-                    
-                    // 叉叉 - 貼著替換圖片的右上角
-                    var closeButton = document.createElement('div');
-                    closeButton.id = 'close_button';
-                    closeButton.innerHTML = closeButtonHtml;
-                    closeButton.style.cssText = closeButtonStyle;
-                    
-                    // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
-                    var abgb = document.createElement('div');
-                    abgb.id = 'abgb';
-                    abgb.className = 'abgb';
-                    abgb.innerHTML = infoButtonHtml;
-                    abgb.style.cssText = infoButtonStyle;
-                    
-                    // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
-                    imgParent.appendChild(abgb);
-                    imgParent.appendChild(closeButton);
                 }
-                }
+                
                 // 方法2: 處理iframe
                 var iframes = container.querySelectorAll('iframe');
                 for (var i = 0; i < iframes.length; i++) {
@@ -940,10 +975,24 @@ class UdnAdReplacer:
                     container.appendChild(closeButton);
                     replacedCount++;
                 }
+                
                 // 方法3: 處理背景圖片
                 if (replacedCount === 0) {
                     var style = window.getComputedStyle(container);
                     if (style.backgroundImage && style.backgroundImage !== 'none') {
+                        // 保存原始背景圖片
+                        if (!container.getAttribute('data-original-background')) {
+                            container.setAttribute('data-original-background', style.backgroundImage);
+                        }
+                        // 保存原始背景樣式
+                        if (!container.getAttribute('data-original-bg-style')) {
+                            var bgStyle = {
+                                size: style.backgroundSize,
+                                repeat: style.backgroundRepeat,
+                                position: style.backgroundPosition
+                            };
+                            container.setAttribute('data-original-bg-style', JSON.stringify(bgStyle));
+                        }
                         container.style.backgroundImage = 'url(' + newImageSrc + ')';
                         container.style.backgroundSize = 'contain';
                         container.style.backgroundRepeat = 'no-repeat';
@@ -1000,15 +1049,31 @@ class UdnAdReplacer:
             # 載入網頁
             self.driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
             self.driver.get(url)
-            time.sleep(WAIT_TIME)
+            print("頁面載入完成，等待廣告載入...")
+            time.sleep(WAIT_TIME + 2)  # 增加等待時間讓廣告有時間載入
             
             # 獲取頁面標題
-            page_title = self.driver.title
-            print(f"📰 頁面標題: {page_title}")
+            try:
+                page_title = self.driver.title
+                print(f"📰 頁面標題: {page_title}")
+            except Exception as e:
+                print(f"獲取頁面標題失敗: {e}")
+                page_title = None
+            
+            # 滾動頁面以觸發懶載入的廣告
+            print("滾動頁面以載入更多廣告...")
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+            time.sleep(2)
+            self.driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(1)
             
             # 遍歷所有替換圖片
             total_replacements = 0
             screenshot_paths = []  # 儲存所有截圖路徑
+            
+            # 先分析頁面上的所有元素尺寸
+            print("\n分析頁面元素尺寸分佈...")
+            self.analyze_page_sizes()
             
             for image_info in self.replace_images:
                 print(f"\n檢查圖片: {image_info['filename']} ({image_info['width']}x{image_info['height']})")
@@ -1038,7 +1103,7 @@ class UdnAdReplacer:
                         continue
                         
                     try:
-                        if self.replace_ad_content(ad_info['element'], image_data, image_info['width'], image_info['height']):
+                        if self.replace_ad_content(ad_info['element'], image_data, image_info['width'], image_info['height'], ad_info):
                             print(f"成功替換廣告: {ad_info['width']}x{ad_info['height']} at {ad_info['position']}")
                             replaced = True
                             total_replacements += 1
@@ -1085,80 +1150,78 @@ class UdnAdReplacer:
                             # 截圖後復原該位置的廣告
                             try:
                                 self.driver.execute_script("""
-                                    // 簡化還原邏輯：直接移除所有注入的元素
-                                    // 移除所有注入的按鈕
-                                    var buttons = document.querySelectorAll('#close_button, #abgb, #info_button');
-                                    for (var i = 0; i < buttons.length; i++) {
-                                        buttons[i].remove();
+                                    var element = arguments[0];
+                                    
+                                    // 移除我們添加的按鈕
+                                    var elementsToRemove = document.querySelectorAll('#close_button, #abgb');
+                                    for (var i = 0; i < elementsToRemove.length; i++) {
+                                        elementsToRemove[i].remove();
                                     }
                                     
-                                    // 移除所有替換的圖片
-                                    var replacedImages = document.querySelectorAll('img[src*="data:image/png;base64"]');
-                                    for (var i = 0; i < replacedImages.length; i++) {
-                                        replacedImages[i].remove();
+                                    // 移除我們添加的圖片（通過data URI識別）
+                                    var addedImages = document.querySelectorAll('img[src^="data:image/png;base64"]');
+                                    for (var i = 0; i < addedImages.length; i++) {
+                                        addedImages[i].remove();
                                     }
                                     
-                                    // 移除替換容器
-                                    var container = document.querySelector('#ad_replacement_container');
-                                    if (container) {
-                                        container.remove();
+                                    // 復原原始廣告內容
+                                    function restoreElement(el) {
+                                        if (el.tagName === 'IMG') {
+                                            // 恢復原始src
+                                            var originalSrc = el.getAttribute('data-original-src');
+                                            if (originalSrc) {
+                                                el.src = originalSrc;
+                                                el.removeAttribute('data-original-src');
+                                            }
+                                            // 恢復原始樣式
+                                            var originalStyle = el.getAttribute('data-original-style');
+                                            if (originalStyle !== null) {
+                                                el.style.cssText = originalStyle;
+                                                el.removeAttribute('data-original-style');
+                                            }
+                                        } else if (el.tagName === 'IFRAME') {
+                                            // 恢復iframe可見性
+                                            el.style.visibility = 'visible';
+                                        }
+                                        
+                                        // 恢復背景圖片
+                                        var originalBg = el.getAttribute('data-original-background');
+                                        if (originalBg) {
+                                            el.style.backgroundImage = originalBg;
+                                            el.removeAttribute('data-original-background');
+                                            
+                                            // 恢復背景樣式
+                                            var originalBgStyle = el.getAttribute('data-original-bg-style');
+                                            if (originalBgStyle) {
+                                                try {
+                                                    var bgStyle = JSON.parse(originalBgStyle);
+                                                    el.style.backgroundSize = bgStyle.size;
+                                                    el.style.backgroundRepeat = bgStyle.repeat;
+                                                    el.style.backgroundPosition = bgStyle.position;
+                                                } catch(e) {}
+                                                el.removeAttribute('data-original-bg-style');
+                                            }
+                                        }
                                     }
                                     
-                                    // 恢復所有隱藏的 iframe
-                                    var hiddenIframes = document.querySelectorAll('iframe[style*="display: none"], iframe[style*="visibility: hidden"]');
-                                    for (var i = 0; i < hiddenIframes.length; i++) {
-                                        hiddenIframes[i].style.display = 'block';
-                                        hiddenIframes[i].style.visibility = 'visible';
+                                    // 復原主要元素
+                                    restoreElement(element);
+                                    
+                                    // 復原容器內的所有圖片
+                                    var imgs = element.querySelectorAll('img[data-original-src]');
+                                    for (var i = 0; i < imgs.length; i++) {
+                                        restoreElement(imgs[i]);
                                     }
                                     
-                                    // 清理所有 data 屬性
-                                    var allElements = document.querySelectorAll('[data-original-content], [data-original-src], [data-original-display], [data-injected]');
-                                    for (var i = 0; i < allElements.length; i++) {
-                                        allElements[i].removeAttribute('data-original-content');
-                                        allElements[i].removeAttribute('data-original-src');
-                                        allElements[i].removeAttribute('data-original-display');
-                                        allElements[i].removeAttribute('data-injected');
+                                    // 復原容器內的所有iframe
+                                    var iframes = element.querySelectorAll('iframe[style*="visibility: hidden"]');
+                                    for (var i = 0; i < iframes.length; i++) {
+                                        restoreElement(iframes[i]);
                                     }
-                                    
-                                    console.log('✅ 已清理所有注入元素');
                                 """, ad_info['element'])
                                 print("✅ 廣告位置已復原")
-                                
-                                # 標記該位置為已處理，避免無限循環
-                                position_key = f"top:{ad_info['top']}, left:{ad_info['left']}"
-                                processed_positions.add(position_key)
-                                print(f"📍 標記位置為已處理: {position_key}")
-                                
-                                # 驗證還原是否成功
-                                try:
-                                    restored = self.driver.execute_script("""
-                                        // 不依賴傳入的元素，直接檢查頁面狀態
-                                        var hasNoButtons = !document.querySelector('#close_button') && 
-                                                          !document.querySelector('#abgb');
-                                        
-                                        // 檢查是否有任何元素還保留原始內容標記
-                                        var hasNoOriginalData = !document.querySelector('[data-original-content]');
-                                        
-                                        // 檢查是否有替換的圖片
-                                        var hasNoReplacedImages = !document.querySelector('img[src*="data:image/png;base64"]');
-                                        
-                                        // 檢查是否有替換容器
-                                        var hasNoReplacementContainer = !document.querySelector('#ad_replacement_container');
-                                        
-                                        return hasNoButtons && hasNoOriginalData && hasNoReplacedImages && hasNoReplacementContainer;
-                                    """)
-                                    
-                                    if restored:
-                                        print("✅ 還原驗證成功 - GDN廣告已恢復")
-                                    else:
-                                        print("⚠️ 還原驗證失敗，但繼續執行")
-                                except Exception as e:
-                                    print(f"還原驗證失敗: {e}")
                             except Exception as e:
                                 print(f"復原廣告失敗: {e}")
-                            
-                            # 等待還原完成
-                            time.sleep(1)
                             
                             # 繼續尋找下一個廣告位置，不要break
                             continue
@@ -1201,9 +1264,9 @@ class UdnAdReplacer:
             clean_title = clean_title[:30].strip()
             # 替換空格為底線
             clean_title = clean_title.replace(' ', '_')
-            filepath = f"{SCREENSHOT_FOLDER}/udn_{clean_title}_{timestamp}.png"
+            filepath = f"{SCREENSHOT_FOLDER}/ettoday_{clean_title}_{timestamp}.png"
         else:
-            filepath = f"{SCREENSHOT_FOLDER}/udn_replaced_{timestamp}.png"
+            filepath = f"{SCREENSHOT_FOLDER}/ettoday_replaced_{timestamp}.png"
         
         try:
             time.sleep(1)  # 等待頁面穩定
@@ -1310,6 +1373,49 @@ class UdnAdReplacer:
     def close(self):
         self.driver.quit()
 
+def test_screen_setup():
+    """測試螢幕設定功能"""
+    print("測試螢幕偵測功能...")
+    
+    # 偵測螢幕
+    screens = ScreenManager.detect_screens()
+    print(f"偵測到 {len(screens)} 個螢幕:")
+    
+    for screen in screens:
+        primary_text = " (主螢幕)" if screen['primary'] else ""
+        print(f"  螢幕 {screen['id']}: {screen['resolution']}{primary_text}")
+    
+    # 讓使用者選擇螢幕進行測試
+    screen_id, selected_screen = ScreenManager.select_screen()
+    
+    if screen_id is None:
+        return
+    
+    print(f"\n正在測試螢幕 {screen_id}...")
+    
+    # 創建測試用的瀏覽器實例
+    test_bot = EttodayAdReplacer(headless=False, screen_id=screen_id)
+    
+    try:
+        # 開啟測試頁面
+        test_bot.driver.get("https://www.google.com")
+        time.sleep(3)
+        
+        # 測試截圖功能
+        print("測試截圖功能...")
+        screenshot_path = test_bot.take_screenshot()
+        
+        if screenshot_path:
+            print(f"✅ 螢幕 {screen_id} 設定成功！")
+            print(f"測試截圖已保存: {screenshot_path}")
+        else:
+            print(f"❌ 螢幕 {screen_id} 截圖失敗")
+        
+        input("按 Enter 鍵關閉測試...")
+        
+    finally:
+        test_bot.close()
+
 def main():
     # 偵測並選擇螢幕
     screen_id, selected_screen = ScreenManager.select_screen()
@@ -1319,21 +1425,18 @@ def main():
         return
     
     print(f"\n正在啟動 Chrome 瀏覽器到螢幕 {screen_id}...")
-    bot = UdnAdReplacer(headless=False, screen_id=screen_id)
+    bot = EttodayAdReplacer(headless=False, screen_id=screen_id)
     
     try:
-        # 使用聯合報旅遊網站的專用網址
-        udn_url = "https://travel.udn.com"  # 簡化網址
-        print(f"目標網站: {udn_url}")
-        
-        # 尋找旅遊連結
-        news_urls = bot.get_random_news_urls(udn_url, NEWS_COUNT)
+        # 尋找新聞連結 - 使用 ETtoday 旅遊雲網址
+        ettoday_url = "https://travel.ettoday.net"
+        news_urls = bot.get_random_news_urls(ettoday_url, NEWS_COUNT)
         
         if not news_urls:
-            print("無法獲取旅遊連結")
+            print("無法獲取新聞連結")
             return
         
-        print(f"獲取到 {len(news_urls)} 個旅遊連結")
+        print(f"獲取到 {len(news_urls)} 個新聞連結")
         print(f"目標截圖數量: {SCREENSHOT_COUNT}")
         
         total_screenshots = 0
@@ -1372,51 +1475,16 @@ def main():
         print(f"所有網站處理完成！總共產生 {total_screenshots} 張截圖")
         print(f"{'='*50}")
         
+    except KeyboardInterrupt:
+        print(f"\n\n⚠️  程式被使用者中斷 (Ctrl+C)")
+        print(f"已產生 {total_screenshots} 張截圖")
+        print("正在關閉瀏覽器...")
+    except Exception as e:
+        print(f"\n❌ 程式執行錯誤: {e}")
+        print(f"已產生 {total_screenshots} 張截圖")
     finally:
         bot.close()
-
-def test_screen_setup():
-    """測試螢幕設定功能"""
-    print("測試螢幕偵測功能...")
-    
-    # 偵測螢幕
-    screens = ScreenManager.detect_screens()
-    print(f"偵測到 {len(screens)} 個螢幕:")
-    
-    for screen in screens:
-        primary_text = " (主螢幕)" if screen['primary'] else ""
-        print(f"  螢幕 {screen['id']}: {screen['resolution']}{primary_text}")
-    
-    # 讓使用者選擇螢幕進行測試
-    screen_id, selected_screen = ScreenManager.select_screen()
-    
-    if screen_id is None:
-        return
-    
-    print(f"\n正在測試螢幕 {screen_id}...")
-    
-    # 創建測試用的瀏覽器實例
-    test_bot = UdnAdReplacer(headless=False, screen_id=screen_id)
-    
-    try:
-        # 開啟測試頁面
-        test_bot.driver.get("https://www.google.com")
-        time.sleep(3)
-        
-        # 測試截圖功能
-        print("測試截圖功能...")
-        screenshot_path = test_bot.take_screenshot("測試頁面")
-        
-        if screenshot_path:
-            print(f"✅ 螢幕 {screen_id} 設定成功！")
-            print(f"測試截圖已保存: {screenshot_path}")
-        else:
-            print(f"❌ 螢幕 {screen_id} 截圖失敗")
-        
-        input("按 Enter 鍵關閉測試...")
-        
-    finally:
-        test_bot.close()
+        print("瀏覽器已關閉")
 
 if __name__ == "__main__":
     import sys
@@ -1425,4 +1493,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         test_screen_setup()
     else:
-        main() 
+        main()
