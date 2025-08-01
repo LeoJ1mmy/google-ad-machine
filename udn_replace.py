@@ -1335,10 +1335,10 @@ class UdnAdReplacer:
                             if virtual_width > screen_width or virtual_height > screen_height:
                                 if self.screen_id == 1:
                                     # 主螢幕
-                                    screenshot = pyautogui.screenshot(region=(0, 0, screen_width, screen_height))
+                                    screenshot = pyautogui.screenshot()
                                 elif self.screen_id == 2:
                                     # 假設第二個螢幕在右側
-                                    screenshot = pyautogui.screenshot(region=(screen_width, 0, virtual_width - screen_width, screen_height))
+                                    screenshot = pyautogui.screenshot()
                                 else:
                                     # 其他螢幕，使用全螢幕
                                     screenshot = pyautogui.screenshot()
@@ -1354,7 +1354,7 @@ class UdnAdReplacer:
                             else:
                                 # 嘗試右側螢幕
                                 try:
-                                    screenshot = pyautogui.screenshot(region=(1920, 0, 1920, 1080))
+                                    screenshot = pyautogui.screenshot()
                                 except:
                                     screenshot = pyautogui.screenshot()
                         
