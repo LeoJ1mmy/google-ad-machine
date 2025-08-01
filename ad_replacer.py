@@ -780,22 +780,27 @@ class GoogleAdReplacer:
                                 imgParent.style.position = 'relative';
                             }
                             
-                            // 叉叉 - 貼著替換圖片的右上角
-                            var closeButton = document.createElement('div');
-                            closeButton.id = 'close_button';
-                            closeButton.innerHTML = closeButtonHtml;
-                            closeButton.style.cssText = closeButtonStyle;
-                            
-                            // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
-                            var abgb = document.createElement('div');
-                            abgb.id = 'abgb';
-                            abgb.className = 'abgb';
-                            abgb.innerHTML = infoButtonHtml;
-                            abgb.style.cssText = infoButtonStyle;
-                            
-                            // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
-                            imgParent.appendChild(abgb);
-                            imgParent.appendChild(closeButton);
+                            // 只有在非 none 模式下才創建按鈕
+                            if (closeButtonHtml || infoButtonHtml) {
+                                // 叉叉 - 貼著替換圖片的右上角
+                                if (closeButtonHtml) {
+                                    var closeButton = document.createElement('div');
+                                    closeButton.id = 'close_button';
+                                    closeButton.innerHTML = closeButtonHtml;
+                                    closeButton.style.cssText = closeButtonStyle;
+                                    imgParent.appendChild(closeButton);
+                                }
+                                
+                                // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
+                                if (infoButtonHtml) {
+                                    var abgb = document.createElement('div');
+                                    abgb.id = 'abgb';
+                                    abgb.className = 'abgb';
+                                    abgb.innerHTML = infoButtonHtml;
+                                    abgb.style.cssText = infoButtonStyle;
+                                    imgParent.appendChild(abgb);
+                                }
+                            }
                         }
                     }
                 }

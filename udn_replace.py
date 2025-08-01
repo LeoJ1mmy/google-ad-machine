@@ -826,6 +826,7 @@ class UdnAdReplacer:
                 var closeButtonStyle = arguments[5];
                 var infoButtonHtml = arguments[6];
                 var infoButtonStyle = arguments[7];
+                var isNoneMode = arguments[8];
                 
                 if (!container) return false;
                 
@@ -1036,7 +1037,7 @@ class UdnAdReplacer:
                     }
                 }
                 return replacedCount > 0;
-            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style)
+            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style, is_none_mode)
             
             if success:
                 print(f"替換廣告 {original_info['width']}x{original_info['height']}")
