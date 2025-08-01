@@ -1107,58 +1107,43 @@ class GoogleAdReplacer:
                     except ImportError:
                         print("win32gui 或 PIL 未安裝，嘗試 pyautogui")
                         
-                        # 方法2: 使用 pyautogui
+                        # 方法2: 使用 pyautogui - 直接截取整個螢幕（包含所有視窗）
                         import pyautogui
                         
-                        # 嘗試使用 tkinter 獲取螢幕資訊
+                        print(f"使用 pyautogui 截取完整螢幕 {self.screen_id}")
+                        
+                        # 嘗試使用 mss 庫獲得最佳效果
                         try:
-                            import tkinter as tk
-                            root = tk.Tk()
-                            
-                            # 獲取主螢幕尺寸
-                            screen_width = root.winfo_screenwidth()
-                            screen_height = root.winfo_screenheight()
-                            
-                            # 嘗試獲取虛擬螢幕尺寸（包含所有螢幕）
-                            virtual_width = root.winfo_vrootwidth() if hasattr(root, 'winfo_vrootwidth') else screen_width
-                            virtual_height = root.winfo_vrootheight() if hasattr(root, 'winfo_vrootheight') else screen_height
-                            
-                            root.destroy()
-                            
-                            print(f"主螢幕: {screen_width}x{screen_height}")
-                            print(f"虛擬螢幕: {virtual_width}x{virtual_height}")
-                            
-                            # 如果虛擬螢幕比主螢幕大，說明有多螢幕
-                            if virtual_width > screen_width or virtual_height > screen_height:
-                                if self.screen_id == 1:
-                                    # 主螢幕 - 從 (0,0) 開始
-                                    screenshot = pyautogui.screenshot(region=(0, 0, screen_width, screen_height))
-                                    print(f"主螢幕截圖區域: (0, 0, {screen_width}, {screen_height})")
-                                elif self.screen_id == 2:
-                                    # 第二個螢幕 - 計算正確的尺寸
-                                    second_screen_width = virtual_width - screen_width
-                                    screenshot = pyautogui.screenshot(region=(screen_width, 0, second_screen_width, screen_height))
-                                    print(f"副螢幕截圖區域: ({screen_width}, 0, {second_screen_width}, {screen_height})")
-                                else:
-                                    # 其他螢幕，使用全虛擬螢幕
-                                    screenshot = pyautogui.screenshot(region=(0, 0, virtual_width, virtual_height))
-                                    print(f"全虛擬螢幕截圖區域: (0, 0, {virtual_width}, {virtual_height})")
-                            else:
-                                # 單螢幕
-                                screenshot = pyautogui.screenshot()
-                                print(f"單螢幕截圖: {screen_width}x{screen_height}")
+                            import mss
+                            with mss.mss() as sct:
+                                monitors = sct.monitors
+                                print(f"MSS 偵測到 {len(monitors)-1} 個螢幕: {monitors}")
                                 
+                                if self.screen_id < len(monitors):
+                                    # 使用指定螢幕
+                                    monitor = monitors[self.screen_id]
+                                    screenshot_mss = sct.grab(monitor)
+                                    # 轉換為 PIL Image
+                                    from PIL import Image
+                                    screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
+                                    print(f"✅ 使用 MSS 截取螢幕 {self.screen_id}: {monitor}")
+                                else:
+                                    # 螢幕 ID 超出範圍，使用主螢幕
+                                    monitor = monitors[1]  # monitors[0] 是所有螢幕的組合，monitors[1] 是主螢幕
+                                    screenshot_mss = sct.grab(monitor)
+                                    from PIL import Image
+                                    screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
+                                    print(f"⚠️ 螢幕 ID 超出範圍，使用主螢幕: {monitor}")
+                                    
+                        except ImportError:
+                            print("MSS 未安裝，使用 pyautogui 全螢幕截圖")
+                            # 直接使用 pyautogui 截取整個螢幕，不計算區域
+                            screenshot = pyautogui.screenshot()
+                            print("✅ 使用 pyautogui 截取完整螢幕（包含所有視窗和工具列）")
                         except Exception as e:
-                            print(f"tkinter 方法失敗: {e}，使用基本 pyautogui")
-                            # 基本的 pyautogui 截圖
-                            if self.screen_id == 1:
-                                screenshot = pyautogui.screenshot()
-                            else:
-                                # 嘗試右側螢幕
-                                try:
-                                    screenshot = pyautogui.screenshot(region=(1920, 0, 1920, 1080))
-                                except:
-                                    screenshot = pyautogui.screenshot()
+                            print(f"MSS 截圖失敗: {e}，使用 pyautogui 備用方案")
+                            screenshot = pyautogui.screenshot()
+                            print("✅ 使用 pyautogui 截取完整螢幕（備用方案）")
                         
                         screenshot.save(filepath)
                         print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
