@@ -1335,15 +1335,63 @@ class EttodayAdReplacer:
                 try:
                     import pyautogui
                     
-                    # 如果指定了特定螢幕，計算該螢幕的區域
-                    if self.screen_id > 1:
-                        # 假設每個螢幕寬度為1920px
-                        screen_offset = (self.screen_id - 1) * 1920
-                        # 截取指定螢幕區域
-                        screenshot = pyautogui.screenshot(region=(screen_offset, 0, 1920, 1080))
-                    else:
-                        # 截取主螢幕
-                        screenshot = pyautogui.screenshot()
+                    # 獲取所有螢幕的資訊
+                    try:
+                        # 使用 PowerShell 獲取螢幕位置資訊
+                        powershell_cmd = '''
+                        Add-Type -AssemblyName System.Windows.Forms
+                        $screens = [System.Windows.Forms.Screen]::AllScreens
+                        for ($i = 0; $i -lt $screens.Length; $i++) {
+                            $screen = $screens[$i]
+                            Write-Output "$($i+1):$($screen.Bounds.X):$($screen.Bounds.Y):$($screen.Bounds.Width):$($screen.Bounds.Height):$($screen.Primary)"
+                        }
+                        '''
+                        result = subprocess.run(['powershell', '-Command', powershell_cmd], 
+                                              capture_output=True, text=True)
+                        
+                        if result.returncode == 0:
+                            lines = result.stdout.strip().split('\n')
+                            screen_info = {}
+                            for line in lines:
+                                if ':' in line:
+                                    parts = line.strip().split(':')
+                                    if len(parts) >= 6:
+                                        screen_num = int(parts[0])
+                                        x = int(parts[1])
+                                        y = int(parts[2])
+                                        width = int(parts[3])
+                                        height = int(parts[4])
+                                        is_primary = parts[5].lower() == 'true'
+                                        screen_info[screen_num] = {
+                                            'x': x, 'y': y, 'width': width, 'height': height, 'primary': is_primary
+                                        }
+                            
+                            # 使用正確的螢幕座標截圖
+                            if self.screen_id in screen_info:
+                                screen = screen_info[self.screen_id]
+                                screenshot = pyautogui.screenshot(region=(screen['x'], screen['y'], screen['width'], screen['height']))
+                                print(f"使用螢幕 {self.screen_id} 座標: x={screen['x']}, y={screen['y']}, w={screen['width']}, h={screen['height']}")
+                            else:
+                                # 回退到預設方法
+                                if self.screen_id > 1:
+                                    screen_offset = (self.screen_id - 1) * 1920
+                                    screenshot = pyautogui.screenshot(region=(screen_offset, 0, 1920, 1080))
+                                else:
+                                    screenshot = pyautogui.screenshot()
+                        else:
+                            # PowerShell 失敗，使用預設方法
+                            if self.screen_id > 1:
+                                screen_offset = (self.screen_id - 1) * 1920
+                                screenshot = pyautogui.screenshot(region=(screen_offset, 0, 1920, 1080))
+                            else:
+                                screenshot = pyautogui.screenshot()
+                    except Exception as e:
+                        print(f"獲取螢幕資訊失敗: {e}，使用預設方法")
+                        if self.screen_id > 1:
+                            screen_offset = (self.screen_id - 1) * 1920
+                            screenshot = pyautogui.screenshot(region=(screen_offset, 0, 1920, 1080))
+                        else:
+                            screenshot = pyautogui.screenshot()
                     
                     screenshot.save(filepath)
                     print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
