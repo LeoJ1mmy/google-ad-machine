@@ -1107,14 +1107,43 @@ class GoogleAdReplacer:
                     except ImportError:
                         print("win32gui 或 PIL 未安裝，嘗試 pyautogui")
                         
-                        # 方法2: 使用 pyautogui - 直接全螢幕截圖
+                        # 方法2: 使用 pyautogui - 支援多螢幕
                         import pyautogui
                         
-                        print(f"使用 pyautogui 截取完整螢幕")
+                        print(f"使用 pyautogui 截取螢幕 {self.screen_id}")
                         
-                        # 直接截取整個螢幕，不指定任何區域
-                        screenshot = pyautogui.screenshot()
-                        print("✅ 截取完整螢幕（包含所有視窗、工具列、瀏覽器網址列等）")
+                        if self.screen_id == 1:
+                            # 主螢幕 - 直接全螢幕截圖
+                            screenshot = pyautogui.screenshot()
+                            print("✅ 截取主螢幕完整畫面")
+                        else:
+                            # 副螢幕 - 嘗試使用 mss 庫
+                            try:
+                                import mss
+                                with mss.mss() as sct:
+                                    monitors = sct.monitors
+                                    print(f"偵測到 {len(monitors)-1} 個螢幕: {monitors}")
+                                    
+                                    if self.screen_id < len(monitors):
+                                        # 截取指定螢幕
+                                        monitor = monitors[self.screen_id]
+                                        screenshot_mss = sct.grab(monitor)
+                                        
+                                        # 轉換為 PIL Image
+                                        from PIL import Image
+                                        screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
+                                        print(f"✅ 使用 MSS 截取螢幕 {self.screen_id}: {monitor}")
+                                    else:
+                                        # 螢幕 ID 超出範圍，使用主螢幕
+                                        screenshot = pyautogui.screenshot()
+                                        print(f"⚠️ 螢幕 {self.screen_id} 不存在，使用主螢幕")
+                                        
+                            except ImportError:
+                                print("❌ MSS 未安裝，無法截取副螢幕，使用主螢幕")
+                                screenshot = pyautogui.screenshot()
+                            except Exception as e:
+                                print(f"❌ 副螢幕截圖失敗: {e}，使用主螢幕")
+                                screenshot = pyautogui.screenshot()
                         
                         screenshot.save(filepath)
                         print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
