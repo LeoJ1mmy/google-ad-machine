@@ -1098,22 +1098,25 @@ class LiuLifeAdReplacer:
                             if(old) old.remove();
                         });
                         
-                        // 叉叉 - 貼著替換圖片的右上角
-                        var closeButton = document.createElement('div');
-                        closeButton.id = 'close_button';
-                        closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = closeButtonStyle;
-                        
-                        // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
-                        var abgb = document.createElement('div');
-                        abgb.id = 'abgb';
-                        abgb.className = 'abgb';
-                        abgb.innerHTML = infoButtonHtml;
-                        abgb.style.cssText = infoButtonStyle;
-                        
-                        // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
-                        imgParent.appendChild(abgb);
-                        imgParent.appendChild(closeButton);
+                        // 只有在非 none 模式下才創建按鈕
+                        if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
+                            // 叉叉 - 貼著替換圖片的右上角
+                            var closeButton = document.createElement('div');
+                            closeButton.id = 'close_button';
+                            closeButton.innerHTML = closeButtonHtml;
+                            closeButton.style.cssText = closeButtonStyle;
+                            
+                            // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
+                            var abgb = document.createElement('div');
+                            abgb.id = 'abgb';
+                            abgb.className = 'abgb';
+                            abgb.innerHTML = infoButtonHtml;
+                            abgb.style.cssText = infoButtonStyle;
+                            
+                            // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
+                            imgParent.appendChild(abgb);
+                            imgParent.appendChild(closeButton);
+                        }
                     }
                 }
                 
@@ -1150,22 +1153,25 @@ class LiuLifeAdReplacer:
                         if(old) old.remove();
                     });
                     
-                    // 叉叉 - 貼著替換圖片的右上角
-                    var closeButton = document.createElement('div');
-                    closeButton.id = 'close_button';
-                    closeButton.innerHTML = closeButtonHtml;
-                    closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
-                    
-                    // 驚嘆號 - 貼著替換圖片的右上角，與叉叉水平對齊
-                    var abgb = document.createElement('div');
-                    abgb.id = 'abgb';
-                    abgb.className = 'abgb';
-                    abgb.innerHTML = infoButtonHtml;
-                    abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
-                    
-                    // 將按鈕添加到container內，與圖片同層
-                    container.appendChild(abgb);
-                    container.appendChild(closeButton);
+                    // 只有在非 none 模式下才創建按鈕
+                    if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
+                        // 叉叉 - 貼著替換圖片的右上角
+                        var closeButton = document.createElement('div');
+                        closeButton.id = 'close_button';
+                        closeButton.innerHTML = closeButtonHtml;
+                        closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
+                        
+                        // 驚嘆號 - 貼著替換圖片的右上角，與叉叉水平對齊
+                        var abgb = document.createElement('div');
+                        abgb.id = 'abgb';
+                        abgb.className = 'abgb';
+                        abgb.innerHTML = infoButtonHtml;
+                        abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        
+                        // 將按鈕添加到container內，與圖片同層
+                        container.appendChild(abgb);
+                        container.appendChild(closeButton);
+                    }
                     replacedCount++;
                 }
                 
@@ -1190,25 +1196,28 @@ class LiuLifeAdReplacer:
                             if(old) old.remove();
                         });
                         
-                        // 添加兩個按鈕 - 貼著替換圖片的右上角，水平對齊
-                        var closeButton = document.createElement('div');
-                        closeButton.id = 'close_button';
-                        closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = closeButtonStyle;
-                        
-                        var abgb = document.createElement('div');
-                        abgb.id = 'abgb';
-                        abgb.className = 'abgb';
-                        abgb.innerHTML = infoButtonHtml;
-                        abgb.style.cssText = infoButtonStyle;
-                        
-                        // 將按鈕添加到container內，與背景圖片同層
-                        container.appendChild(abgb);
-                        container.appendChild(closeButton);
+                        // 只有在非 none 模式下才創建按鈕
+                        if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
+                            // 添加兩個按鈕 - 貼著替換圖片的右上角，水平對齊
+                            var closeButton = document.createElement('div');
+                            closeButton.id = 'close_button';
+                            closeButton.innerHTML = closeButtonHtml;
+                            closeButton.style.cssText = closeButtonStyle;
+                            
+                            var abgb = document.createElement('div');
+                            abgb.id = 'abgb';
+                            abgb.className = 'abgb';
+                            abgb.innerHTML = infoButtonHtml;
+                            abgb.style.cssText = infoButtonStyle;
+                            
+                            // 將按鈕添加到container內，與背景圖片同層
+                            container.appendChild(abgb);
+                            container.appendChild(closeButton);
+                        }
                     }
                 }
                 return replacedCount > 0;
-            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style)
+            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style, is_none_mode)
             
             if success:
                 print(f"替換廣告 {original_info['width']}x{original_info['height']}")
@@ -1437,56 +1446,58 @@ class LiuLifeAdReplacer:
                     except ImportError:
                         print("win32gui 或 PIL 未安裝，嘗試 pyautogui")
                         
-                        # 方法2: 直接使用 MSS 庫 - 最可靠的多螢幕截圖方法
-                        try:
-                            import mss
-                            with mss.mss() as sct:
-                                monitors = sct.monitors
-                                print(f"MSS 偵測到 {len(monitors)-1} 個螢幕: {monitors}")
+                        # 直接使用 MSS 庫 - 最可靠的多螢幕截圖方法
+                        import mss
+                        with mss.mss() as sct:
+                            monitors = sct.monitors
+                            print(f"MSS 偵測到 {len(monitors)-1} 個螢幕: {monitors}")
+                            
+                            if self.screen_id < len(monitors):
+                                # 截取指定螢幕
+                                monitor = monitors[self.screen_id]
+                                screenshot_mss = sct.grab(monitor)
                                 
-                                if self.screen_id < len(monitors):
-                                    # 截取指定螢幕
-                                    monitor = monitors[self.screen_id]
-                                    screenshot_mss = sct.grab(monitor)
-                                    
-                                    # 轉換為 PIL Image
-                                    from PIL import Image
-                                    screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
-                                    print(f"✅ 使用 MSS 截取螢幕 {self.screen_id}: {monitor}")
-                                    print(f"   截圖尺寸: {screenshot.size}")
-                                else:
-                                    # 螢幕 ID 超出範圍，使用主螢幕
-                                    monitor = monitors[1]  # 主螢幕
-                                    screenshot_mss = sct.grab(monitor)
-                                    from PIL import Image
-                                    screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
-                                    print(f"⚠️ 螢幕 {self.screen_id} 不存在，使用主螢幕: {monitor}")
-                                    
-                        except ImportError:
-                            print("❌ MSS 未安裝，使用 pyautogui 備用方案")
-                            import pyautogui
-                            screenshot = pyautogui.screenshot()
-                            print("使用 pyautogui 截取主螢幕")
-                        except Exception as e:
-                            print(f"❌ MSS 截圖失敗: {e}，使用 pyautogui 備用方案")
-                            import pyautogui
-                            screenshot = pyautogui.screenshot()
-                            print("使用 pyautogui 截取主螢幕")
+                                # 轉換為 PIL Image
+                                from PIL import Image
+                                screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
+                                print(f"✅ 使用 MSS 截取螢幕 {self.screen_id}: {monitor}")
+                                print(f"   截圖尺寸: {screenshot.size}")
+                            else:
+                                # 螢幕 ID 超出範圍，使用主螢幕
+                                monitor = monitors[1]  # 主螢幕
+                                screenshot_mss = sct.grab(monitor)
+                                from PIL import Image
+                                screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
+                                print(f"⚠️ 螢幕 {self.screen_id} 不存在，使用主螢幕: {monitor}")
                         
                         screenshot.save(filepath)
-                        print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
-                        return filepath
                         
                 except ImportError:
-                    print("pyautogui 未安裝，使用 Selenium 截圖")
-                    self.driver.save_screenshot(filepath)
-                    print(f"截圖保存: {filepath}")
-                    return filepath
+                    print("❌ MSS 未安裝，使用 pyautogui 備用方案")
+                    try:
+                        import pyautogui
+                        screenshot = pyautogui.screenshot()
+                        screenshot.save(filepath)
+                        print(f"✅ pyautogui 截圖保存: {filepath}")
+                        return filepath
+                    except:
+                        print("pyautogui 也失敗，使用 Selenium 截圖")
+                        self.driver.save_screenshot(filepath)
+                        print(f"截圖保存: {filepath}")
+                        return filepath
                 except Exception as e:
-                    print(f"Windows 截圖失敗: {e}，使用 Selenium 截圖")
-                    self.driver.save_screenshot(filepath)
-                    print(f"截圖保存: {filepath}")
-                    return filepath
+                    print(f"❌ MSS 截圖失敗: {e}，使用 pyautogui 備用方案")
+                    try:
+                        import pyautogui
+                        screenshot = pyautogui.screenshot()
+                        screenshot.save(filepath)
+                        print(f"✅ pyautogui 截圖保存: {filepath}")
+                        return filepath
+                    except:
+                        print("pyautogui 也失敗，使用 Selenium 截圖")
+                        self.driver.save_screenshot(filepath)
+                        print(f"截圖保存: {filepath}")
+                        return filepath
                     
             elif system == "Darwin":  # macOS
                 # macOS 多螢幕截圖
