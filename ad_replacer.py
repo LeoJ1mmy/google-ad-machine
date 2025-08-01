@@ -1107,43 +1107,14 @@ class GoogleAdReplacer:
                     except ImportError:
                         print("win32gui 或 PIL 未安裝，嘗試 pyautogui")
                         
-                        # 方法2: 使用 pyautogui - 直接截取整個螢幕（包含所有視窗）
+                        # 方法2: 使用 pyautogui - 直接全螢幕截圖
                         import pyautogui
                         
-                        print(f"使用 pyautogui 截取完整螢幕 {self.screen_id}")
+                        print(f"使用 pyautogui 截取完整螢幕")
                         
-                        # 嘗試使用 mss 庫獲得最佳效果
-                        try:
-                            import mss
-                            with mss.mss() as sct:
-                                monitors = sct.monitors
-                                print(f"MSS 偵測到 {len(monitors)-1} 個螢幕: {monitors}")
-                                
-                                if self.screen_id < len(monitors):
-                                    # 使用指定螢幕
-                                    monitor = monitors[self.screen_id]
-                                    screenshot_mss = sct.grab(monitor)
-                                    # 轉換為 PIL Image
-                                    from PIL import Image
-                                    screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
-                                    print(f"✅ 使用 MSS 截取螢幕 {self.screen_id}: {monitor}")
-                                else:
-                                    # 螢幕 ID 超出範圍，使用主螢幕
-                                    monitor = monitors[1]  # monitors[0] 是所有螢幕的組合，monitors[1] 是主螢幕
-                                    screenshot_mss = sct.grab(monitor)
-                                    from PIL import Image
-                                    screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
-                                    print(f"⚠️ 螢幕 ID 超出範圍，使用主螢幕: {monitor}")
-                                    
-                        except ImportError:
-                            print("MSS 未安裝，使用 pyautogui 全螢幕截圖")
-                            # 直接使用 pyautogui 截取整個螢幕，不計算區域
-                            screenshot = pyautogui.screenshot()
-                            print("✅ 使用 pyautogui 截取完整螢幕（包含所有視窗和工具列）")
-                        except Exception as e:
-                            print(f"MSS 截圖失敗: {e}，使用 pyautogui 備用方案")
-                            screenshot = pyautogui.screenshot()
-                            print("✅ 使用 pyautogui 截取完整螢幕（備用方案）")
+                        # 直接截取整個螢幕，不指定任何區域
+                        screenshot = pyautogui.screenshot()
+                        print("✅ 截取完整螢幕（包含所有視窗、工具列、瀏覽器網址列等）")
                         
                         screenshot.save(filepath)
                         print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
