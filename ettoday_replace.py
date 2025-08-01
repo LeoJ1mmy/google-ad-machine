@@ -270,41 +270,26 @@ class EttodayAdReplacer:
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-web-security')
         chrome_options.add_argument('--disable-features=VizDisplayCompositor')
-        
-        # 確保能正確顯示內容
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-plugins')
         chrome_options.add_argument('--disable-images=false')  # 確保圖片載入
-        
-        # 設置窗口大小（用於截圖）
         chrome_options.add_argument('--window-size=1920,1080')
         
-        # 根據作業系統設定螢幕位置
-        system = platform.system()
+        # 多螢幕支援 - 計算螢幕偏移量
+        if self.screen_id > 1:
+            screen_offset = (self.screen_id - 1) * 1920
+            chrome_options.add_argument(f'--window-position={screen_offset},0')
         
-        if system == "Darwin":  # macOS
-            # macOS 多螢幕支援
-            if self.screen_id > 1:
-                # 計算螢幕偏移量 (假設每個螢幕寬度為1920px)
-                screen_offset = (self.screen_id - 1) * 1920
-                chrome_options.add_argument(f'--window-position={screen_offset},0')
-            
-        elif system == "Windows":
-            # Windows 多螢幕支援
-            if self.screen_id > 1:
-                screen_offset = (self.screen_id - 1) * 1920
-                chrome_options.add_argument(f'--window-position={screen_offset},0')
-        
+        # 默認全螢幕設定
+        chrome_options.add_argument('--start-maximized')
         if not headless:
-            chrome_options.add_argument('--start-maximized')
-            if FULLSCREEN_MODE:
-                chrome_options.add_argument('--start-fullscreen')
+            chrome_options.add_argument('--start-fullscreen')
         
         print("正在啟動 Chrome 瀏覽器...")
         self.driver = webdriver.Chrome(options=chrome_options)
         print("Chrome 瀏覽器啟動成功！")
         
-        # 確保瀏覽器在正確的螢幕上
+        # 確保瀏覽器在正確的螢幕上並全螢幕
         if not headless:
             self.move_to_screen()
         
@@ -313,65 +298,33 @@ class EttodayAdReplacer:
         print("瀏覽器設置完成！")
     
     def move_to_screen(self):
-        """將瀏覽器移動到指定螢幕"""
+        """將瀏覽器移動到指定螢幕並設為全螢幕"""
         try:
-            system = platform.system()
+            # 多螢幕位置調整
+            if self.screen_id > 1:
+                screen_offset = (self.screen_id - 1) * 1920
+                self.driver.set_window_position(screen_offset, 0)
             
-            if system == "Darwin":  # macOS
-                # 使用 AppleScript 移動 Chrome 到指定螢幕
-                applescript = f'''
-                tell application "Google Chrome"
-                    activate
-                    set bounds of front window to {{0, 0, 1920, 1080}}
-                end tell
-                '''
-                
-                if self.screen_id > 1:
-                    # 計算螢幕偏移
-                    screen_offset = (self.screen_id - 1) * 1920
-                    applescript = f'''
-                    tell application "Google Chrome"
-                        activate
-                        set bounds of front window to {{{screen_offset}, 0, {screen_offset + 1920}, 1080}}
-                    end tell
-                    '''
-                
-                subprocess.run(['osascript', '-e', applescript], 
-                             capture_output=True, text=True)
-                
-            elif system == "Windows":
-                # Windows 使用 Selenium 的視窗管理
-                if self.screen_id > 1:
-                    screen_offset = (self.screen_id - 1) * 1920
-                    self.driver.set_window_position(screen_offset, 0)
+            # 等待視窗移動完成後設為全螢幕
+            time.sleep(1)
+            self.driver.fullscreen_window()
+            print(f"✅ Chrome 已移動到螢幕 {self.screen_id} 並設為全螢幕")
             
-            # 設置瀏覽器窗口
+            # 獲取當前窗口大小
             try:
-                # 最大化窗口
-                self.driver.maximize_window()
-                print("瀏覽器窗口已最大化")
-                
-                if FULLSCREEN_MODE:
-                    # 設置全螢幕模式
-                    time.sleep(1)  # 等待視窗移動完成
-                    self.driver.fullscreen_window()
-                    print("瀏覽器已設置為全螢幕模式")
-                    
-                # 等待窗口調整完成
-                time.sleep(2)
-                
-                # 獲取當前窗口大小
                 window_size = self.driver.get_window_size()
                 print(f"當前瀏覽器窗口大小: {window_size['width']}x{window_size['height']}")
-                
             except Exception as e:
-                print(f"設置瀏覽器窗口失敗: {e}")
-                
-            print(f"✅ Chrome 已移動到螢幕 {self.screen_id}")
+                print(f"獲取窗口大小失敗: {e}")
             
         except Exception as e:
             print(f"移動瀏覽器到螢幕 {self.screen_id} 失敗: {e}")
-            print("將使用預設螢幕位置")
+            # 即使移動失敗，也嘗試設為全螢幕
+            try:
+                self.driver.fullscreen_window()
+                print("✅ 已設為全螢幕模式")
+            except:
+                print("將使用預設螢幕位置")
     
     def load_replace_images(self):
         """載入替換圖片並解析尺寸"""
