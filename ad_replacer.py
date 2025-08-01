@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -91,26 +92,73 @@ class ScreenManager:
                             })
                 
             elif system == "Windows":
-                # Windows 使用 wmic 命令
-                cmd = 'wmic desktopmonitor get screenheight,screenwidth /format:csv'
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                # Windows 多種方法偵測螢幕
+                try:
+                    # 方法1: 使用 PowerShell 獲取螢幕資訊
+                    powershell_cmd = '''
+                    Add-Type -AssemblyName System.Windows.Forms
+                    [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+                        Write-Output "$($_.Bounds.Width)x$($_.Bounds.Height):$($_.Primary)"
+                    }
+                    '''
+                    result = subprocess.run(['powershell', '-Command', powershell_cmd], 
+                                          capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        lines = result.stdout.strip().split('\n')
+                        screen_id = 1
+                        for line in lines:
+                            if 'x' in line and ':' in line:
+                                resolution, is_primary = line.strip().split(':')
+                                screens.append({
+                                    'id': screen_id,
+                                    'resolution': resolution,
+                                    'primary': is_primary.lower() == 'true'
+                                })
+                                screen_id += 1
+                except Exception as e:
+                    print(f"PowerShell 方法失敗: {e}")
                 
-                if result.returncode == 0:
-                    lines = result.stdout.strip().split('\n')[1:]  # 跳過標題行
-                    screen_id = 1
-                    for line in lines:
-                        if line.strip() and ',' in line:
-                            parts = line.split(',')
-                            if len(parts) >= 3:
-                                width = parts[2].strip()
-                                height = parts[1].strip()
-                                if width and height and width != 'NULL':
-                                    screens.append({
-                                        'id': screen_id,
-                                        'resolution': f"{width}x{height}",
-                                        'primary': screen_id == 1
-                                    })
-                                    screen_id += 1
+                # 方法2: 如果 PowerShell 失敗，使用 wmic
+                if not screens:
+                    try:
+                        cmd = 'wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution /format:csv'
+                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                        
+                        if result.returncode == 0:
+                            lines = result.stdout.strip().split('\n')
+                            screen_id = 1
+                            for line in lines[1:]:  # 跳過標題行
+                                if line.strip() and ',' in line:
+                                    parts = line.split(',')
+                                    if len(parts) >= 3:
+                                        width = parts[1].strip()
+                                        height = parts[2].strip()
+                                        if width and height and width != 'NULL' and width.isdigit():
+                                            screens.append({
+                                                'id': screen_id,
+                                                'resolution': f"{width}x{height}",
+                                                'primary': screen_id == 1
+                                            })
+                                            screen_id += 1
+                    except Exception as e:
+                        print(f"wmic 方法失敗: {e}")
+                
+                # 方法3: 使用 Python 的 tkinter 作為備用
+                if not screens:
+                    try:
+                        import tkinter as tk
+                        root = tk.Tk()
+                        width = root.winfo_screenwidth()
+                        height = root.winfo_screenheight()
+                        screens.append({
+                            'id': 1,
+                            'resolution': f"{width}x{height}",
+                            'primary': True
+                        })
+                        root.destroy()
+                    except Exception as e:
+                        print(f"tkinter 方法失敗: {e}")
                 
             else:  # Linux
                 # Linux 使用 xrandr
@@ -504,6 +552,16 @@ class GoogleAdReplacer:
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
                     "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
                 }
+            },
+            "none": {
+                "close_button": {
+                    "html": '',
+                    "style": 'display:none;'
+                },
+                "info_button": {
+                    "html": '',
+                    "style": 'display:none;'
+                }
             }
         }
         
@@ -529,12 +587,23 @@ class GoogleAdReplacer:
             
             # 獲取按鈕樣式
             button_style = self.get_button_style()
-            close_button_html = button_style["close_button"]["html"]
-            close_button_style = button_style["close_button"]["style"]
-            info_button_html = button_style["info_button"]["html"]
-            info_button_style = button_style["info_button"]["style"]
             
-            # 只替換圖片，保留廣告按鈕
+            # 檢查是否為 "none" 模式
+            current_button_style = getattr(self, 'button_style', BUTTON_STYLE)
+            is_none_mode = current_button_style == "none"
+            
+            if not is_none_mode:
+                close_button_html = button_style["close_button"]["html"]
+                close_button_style = button_style["close_button"]["style"]
+                info_button_html = button_style["info_button"]["html"]
+                info_button_style = button_style["info_button"]["style"]
+            else:
+                close_button_html = ""
+                close_button_style = ""
+                info_button_html = ""
+                info_button_style = ""
+            
+            # 只替換圖片，根據模式決定是否添加按鈕
             success = self.driver.execute_script("""
                 // 添加 Google 廣告標準樣式
                 if (!document.getElementById('google_ad_styles')) {
@@ -626,26 +695,7 @@ class GoogleAdReplacer:
                 var closeButtonStyle = arguments[5];
                 var infoButtonHtml = arguments[6];
                 var infoButtonStyle = arguments[7];
-                
-                if (!container) return false;
-                
-                // 確保 container 是 relative
-                if (window.getComputedStyle(container).position === 'static') {
-                  container.style.position = 'relative';
-                }
-                // 先移除舊的（避免重複）
-                ['close_button', 'abgb'].forEach(function(id){
-                  var old = container.querySelector('#'+id);
-                  if(old) old.remove();
-                });
-                
-                var replacedCount = 0;
-                var newImageSrc = 'data:image/png;base64,' + imageBase64;
-                
-                var container = arguments[0];
-                var imageBase64 = arguments[1];
-                var targetWidth = arguments[2];
-                var targetHeight = arguments[3];
+                var isNoneMode = arguments[8];
                 
                 if (!container) return false;
                 
@@ -723,22 +773,30 @@ class GoogleAdReplacer:
                             if(old) old.remove();
                         });
                         
-                        // 叉叉 - 貼著替換圖片的右上角
-                        var closeButton = document.createElement('div');
-                        closeButton.id = 'close_button';
-                        closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = closeButtonStyle;
-                        
-                        // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
-                        var abgb = document.createElement('div');
-                        abgb.id = 'abgb';
-                        abgb.className = 'abgb';
-                        abgb.innerHTML = infoButtonHtml;
-                        abgb.style.cssText = infoButtonStyle;
-                        
-                        // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
-                        imgParent.appendChild(abgb);
-                        imgParent.appendChild(closeButton);
+                        // 只有在非 none 模式下才創建按鈕
+                        if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
+                            // 確保img的父層是relative
+                            if (window.getComputedStyle(imgParent).position === 'static') {
+                                imgParent.style.position = 'relative';
+                            }
+                            
+                            // 叉叉 - 貼著替換圖片的右上角
+                            var closeButton = document.createElement('div');
+                            closeButton.id = 'close_button';
+                            closeButton.innerHTML = closeButtonHtml;
+                            closeButton.style.cssText = closeButtonStyle;
+                            
+                            // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
+                            var abgb = document.createElement('div');
+                            abgb.id = 'abgb';
+                            abgb.className = 'abgb';
+                            abgb.innerHTML = infoButtonHtml;
+                            abgb.style.cssText = infoButtonStyle;
+                            
+                            // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
+                            imgParent.appendChild(abgb);
+                            imgParent.appendChild(closeButton);
+                        }
                     }
                 }
                 // 方法2: 處理iframe
@@ -774,22 +832,25 @@ class GoogleAdReplacer:
                         if(old) old.remove();
                     });
                     
-                    // 叉叉 - 貼著替換圖片的右上角
-                    var closeButton = document.createElement('div');
-                    closeButton.id = 'close_button';
-                    closeButton.innerHTML = closeButtonHtml;
-                    closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
-                    
-                    // 驚嘆號 - 貼著替換圖片的右上角，與叉叉水平對齊
-                    var abgb = document.createElement('div');
-                    abgb.id = 'abgb';
-                    abgb.className = 'abgb';
-                    abgb.innerHTML = infoButtonHtml;
-                    abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
-                    
-                    // 將按鈕添加到container內，與圖片同層
-                    container.appendChild(abgb);
-                    container.appendChild(closeButton);
+                    // 只有在非 none 模式下才創建按鈕
+                    if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
+                        // 叉叉 - 貼著替換圖片的右上角
+                        var closeButton = document.createElement('div');
+                        closeButton.id = 'close_button';
+                        closeButton.innerHTML = closeButtonHtml;
+                        closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
+                        
+                        // 驚嘆號 - 貼著替換圖片的右上角，與叉叉水平對齊
+                        var abgb = document.createElement('div');
+                        abgb.id = 'abgb';
+                        abgb.className = 'abgb';
+                        abgb.innerHTML = infoButtonHtml;
+                        abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        
+                        // 將按鈕添加到container內，與圖片同層
+                        container.appendChild(abgb);
+                        container.appendChild(closeButton);
+                    }
                     replacedCount++;
                 }
                 // 方法3: 處理背景圖片
@@ -813,25 +874,33 @@ class GoogleAdReplacer:
                             if(old) old.remove();
                         });
                         
-                        // 添加兩個按鈕 - 貼著替換圖片的右上角，水平對齊
-                        var closeButton = document.createElement('div');
-                        closeButton.id = 'close_button';
-                        closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = closeButtonStyle;
-                        
-                        var abgb = document.createElement('div');
-                        abgb.id = 'abgb';
-                        abgb.className = 'abgb';
-                        abgb.innerHTML = infoButtonHtml;
-                        abgb.style.cssText = infoButtonStyle;
-                        
-                        // 將按鈕添加到container內，與背景圖片同層
-                        container.appendChild(abgb);
-                        container.appendChild(closeButton);
+                        // 只有在非 none 模式下才創建按鈕
+                        if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
+                            // 確保容器是relative
+                            if (window.getComputedStyle(container).position === 'static') {
+                                container.style.position = 'relative';
+                            }
+                            
+                            // 添加兩個按鈕 - 貼著替換圖片的右上角，水平對齊
+                            var closeButton = document.createElement('div');
+                            closeButton.id = 'close_button';
+                            closeButton.innerHTML = closeButtonHtml;
+                            closeButton.style.cssText = closeButtonStyle;
+                            
+                            var abgb = document.createElement('div');
+                            abgb.id = 'abgb';
+                            abgb.className = 'abgb';
+                            abgb.innerHTML = infoButtonHtml;
+                            abgb.style.cssText = infoButtonStyle;
+                            
+                            // 將按鈕添加到container內，與背景圖片同層
+                            container.appendChild(abgb);
+                            container.appendChild(closeButton);
+                        }
                     }
                 }
                 return replacedCount > 0;
-            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style)
+            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style, is_none_mode)
             
             if success:
                 print(f"替換廣告 {original_info['width']}x{original_info['height']}")

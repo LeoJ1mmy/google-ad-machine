@@ -91,26 +91,119 @@ class ScreenManager:
                             })
                 
             elif system == "Windows":
-                # Windows 使用 wmic 命令
-                cmd = 'wmic desktopmonitor get screenheight,screenwidth /format:csv'
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                # Windows 多種方法偵測螢幕
+                try:
+                    # 方法1: 使用 wmic path Win32_VideoController
+                    cmd = 'wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution /format:csv'
+                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        lines = result.stdout.strip().split('\n')
+                        screen_id = 1
+                        for line in lines[1:]:  # 跳過標題行
+                            if line.strip() and ',' in line:
+                                parts = line.split(',')
+                                if len(parts) >= 3:
+                                    width = parts[1].strip()
+                                    height = parts[2].strip()
+                                    if width and height and width != 'NULL' and width.isdigit():
+                                        screens.append({
+                                            'id': screen_id,
+                                            'resolution': f"{width}x{height}",
+                                            'primary': screen_id == 1
+                                        })
+                                        screen_id += 1
+                except Exception as e:
+                    print(f"方法1失敗: {e}")
                 
-                if result.returncode == 0:
-                    lines = result.stdout.strip().split('\n')[1:]  # 跳過標題行
-                    screen_id = 1
-                    for line in lines:
-                        if line.strip() and ',' in line:
-                            parts = line.split(',')
-                            if len(parts) >= 3:
-                                width = parts[2].strip()
-                                height = parts[1].strip()
-                                if width and height and width != 'NULL':
+                # 方法2: 如果方法1失敗，使用 PowerShell
+                if not screens:
+                    try:
+                        powershell_cmd = '''
+                        Add-Type -AssemblyName System.Windows.Forms
+                        [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+                            Write-Output "$($_.Bounds.Width)x$($_.Bounds.Height):$($_.Primary)"
+                        }
+                        '''
+                        result = subprocess.run(['powershell', '-Command', powershell_cmd], 
+                                              capture_output=True, text=True)
+                        
+                        if result.returncode == 0:
+                            lines = result.stdout.strip().split('\n')
+                            screen_id = 1
+                            for line in lines:
+                                if 'x' in line and ':' in line:
+                                    resolution, is_primary = line.strip().split(':')
                                     screens.append({
                                         'id': screen_id,
-                                        'resolution': f"{width}x{height}",
-                                        'primary': screen_id == 1
+                                        'resolution': resolution,
+                                        'primary': is_primary.lower() == 'true'
                                     })
                                     screen_id += 1
+                    except Exception as e:
+                        print(f"方法2失敗: {e}")
+                
+                # 方法3: 如果前面都失敗，嘗試使用 Python 的 tkinter
+                if not screens:
+                    try:
+                        import tkinter as tk
+                        root = tk.Tk()
+                        
+                        # 獲取主螢幕資訊
+                        width = root.winfo_screenwidth()
+                        height = root.winfo_screenheight()
+                        
+                        screens.append({
+                            'id': 1,
+                            'resolution': f"{width}x{height}",
+                            'primary': True
+                        })
+                        
+                        # 嘗試獲取多螢幕資訊
+                        try:
+                            # 這個方法可能不適用於所有 Windows 版本
+                            screen_count = root.tk.call('tk', 'scaling')
+                            if screen_count and screen_count > 1:
+                                for i in range(2, int(screen_count) + 1):
+                                    screens.append({
+                                        'id': i,
+                                        'resolution': f"{width}x{height}",
+                                        'primary': False
+                                    })
+                        except:
+                            pass
+                        
+                        root.destroy()
+                    except Exception as e:
+                        print(f"方法3失敗: {e}")
+                
+                # 方法4: 最後的備用方案，使用 pyautogui (如果可用)
+                if not screens:
+                    try:
+                        import pyautogui
+                        width, height = pyautogui.size()
+                        screens.append({
+                            'id': 1,
+                            'resolution': f"{width}x{height}",
+                            'primary': True
+                        })
+                        
+                        # pyautogui 沒有直接的多螢幕支援，但我們可以嘗試檢測
+                        # 通過嘗試不同的座標來推測是否有多螢幕
+                        try:
+                            # 嘗試在主螢幕右側檢測
+                            test_x = width + 100
+                            test_y = 100
+                            # 這裡我們假設如果能在主螢幕外截圖，就有第二個螢幕
+                            # 但 pyautogui 的 screenshot 不支援這種檢測，所以這只是一個佔位符
+                            pass
+                        except:
+                            pass
+                            
+                    except ImportError:
+                        print("pyautogui 未安裝")
+                    except Exception as e:
+                        print(f"方法4失敗: {e}")
                 
             else:  # Linux
                 # Linux 使用 xrandr
@@ -795,6 +888,16 @@ class LiuLifeAdReplacer:
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
                     "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                }
+            },
+            "none": {
+                "close_button": {
+                    "html": '',
+                    "style": 'display:none;'
+                },
+                "info_button": {
+                    "html": '',
+                    "style": 'display:none;'
                 }
             }
         }

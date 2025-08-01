@@ -91,26 +91,73 @@ class ScreenManager:
                             })
                 
             elif system == "Windows":
-                # Windows 使用 wmic 命令
-                cmd = 'wmic desktopmonitor get screenheight,screenwidth /format:csv'
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                # Windows 多種方法偵測螢幕
+                try:
+                    # 方法1: 使用 PowerShell 獲取螢幕資訊
+                    powershell_cmd = '''
+                    Add-Type -AssemblyName System.Windows.Forms
+                    [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+                        Write-Output "$($_.Bounds.Width)x$($_.Bounds.Height):$($_.Primary)"
+                    }
+                    '''
+                    result = subprocess.run(['powershell', '-Command', powershell_cmd], 
+                                          capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        lines = result.stdout.strip().split('\n')
+                        screen_id = 1
+                        for line in lines:
+                            if 'x' in line and ':' in line:
+                                resolution, is_primary = line.strip().split(':')
+                                screens.append({
+                                    'id': screen_id,
+                                    'resolution': resolution,
+                                    'primary': is_primary.lower() == 'true'
+                                })
+                                screen_id += 1
+                except Exception as e:
+                    print(f"PowerShell 方法失敗: {e}")
                 
-                if result.returncode == 0:
-                    lines = result.stdout.strip().split('\n')[1:]  # 跳過標題行
-                    screen_id = 1
-                    for line in lines:
-                        if line.strip() and ',' in line:
-                            parts = line.split(',')
-                            if len(parts) >= 3:
-                                width = parts[2].strip()
-                                height = parts[1].strip()
-                                if width and height and width != 'NULL':
-                                    screens.append({
-                                        'id': screen_id,
-                                        'resolution': f"{width}x{height}",
-                                        'primary': screen_id == 1
-                                    })
-                                    screen_id += 1
+                # 方法2: 如果 PowerShell 失敗，使用 wmic
+                if not screens:
+                    try:
+                        cmd = 'wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution /format:csv'
+                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                        
+                        if result.returncode == 0:
+                            lines = result.stdout.strip().split('\n')
+                            screen_id = 1
+                            for line in lines[1:]:  # 跳過標題行
+                                if line.strip() and ',' in line:
+                                    parts = line.split(',')
+                                    if len(parts) >= 3:
+                                        width = parts[1].strip()
+                                        height = parts[2].strip()
+                                        if width and height and width != 'NULL' and width.isdigit():
+                                            screens.append({
+                                                'id': screen_id,
+                                                'resolution': f"{width}x{height}",
+                                                'primary': screen_id == 1
+                                            })
+                                            screen_id += 1
+                    except Exception as e:
+                        print(f"wmic 方法失敗: {e}")
+                
+                # 方法3: 使用 Python 的 tkinter 作為備用
+                if not screens:
+                    try:
+                        import tkinter as tk
+                        root = tk.Tk()
+                        width = root.winfo_screenwidth()
+                        height = root.winfo_screenheight()
+                        screens.append({
+                            'id': 1,
+                            'resolution': f"{width}x{height}",
+                            'primary': True
+                        })
+                        root.destroy()
+                    except Exception as e:
+                        print(f"tkinter 方法失敗: {e}")
                 
             else:  # Linux
                 # Linux 使用 xrandr
@@ -699,6 +746,16 @@ class EttodayAdReplacer:
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
                     "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                }
+            },
+            "none": {
+                "close_button": {
+                    "html": '',
+                    "style": 'display:none;'
+                },
+                "info_button": {
+                    "html": '',
+                    "style": 'display:none;'
                 }
             }
         }

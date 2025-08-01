@@ -98,26 +98,73 @@ class ScreenManager:
                             })
                 
             elif system == "Windows":
-                # Windows 使用 wmic 命令
-                cmd = 'wmic desktopmonitor get screenheight,screenwidth /format:csv'
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                # Windows 多種方法偵測螢幕
+                try:
+                    # 方法1: 使用 PowerShell 獲取螢幕資訊
+                    powershell_cmd = '''
+                    Add-Type -AssemblyName System.Windows.Forms
+                    [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+                        Write-Output "$($_.Bounds.Width)x$($_.Bounds.Height):$($_.Primary)"
+                    }
+                    '''
+                    result = subprocess.run(['powershell', '-Command', powershell_cmd], 
+                                          capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        lines = result.stdout.strip().split('\n')
+                        screen_id = 1
+                        for line in lines:
+                            if 'x' in line and ':' in line:
+                                resolution, is_primary = line.strip().split(':')
+                                screens.append({
+                                    'id': screen_id,
+                                    'resolution': resolution,
+                                    'primary': is_primary.lower() == 'true'
+                                })
+                                screen_id += 1
+                except Exception as e:
+                    print(f"PowerShell 方法失敗: {e}")
                 
-                if result.returncode == 0:
-                    lines = result.stdout.strip().split('\n')[1:]  # 跳過標題行
-                    screen_id = 1
-                    for line in lines:
-                        if line.strip() and ',' in line:
-                            parts = line.split(',')
-                            if len(parts) >= 3:
-                                width = parts[2].strip()
-                                height = parts[1].strip()
-                                if width and height and width != 'NULL':
-                                    screens.append({
-                                        'id': screen_id,
-                                        'resolution': f"{width}x{height}",
-                                        'primary': screen_id == 1
-                                    })
-                                    screen_id += 1
+                # 方法2: 如果 PowerShell 失敗，使用 wmic
+                if not screens:
+                    try:
+                        cmd = 'wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution /format:csv'
+                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                        
+                        if result.returncode == 0:
+                            lines = result.stdout.strip().split('\n')
+                            screen_id = 1
+                            for line in lines[1:]:  # 跳過標題行
+                                if line.strip() and ',' in line:
+                                    parts = line.split(',')
+                                    if len(parts) >= 3:
+                                        width = parts[1].strip()
+                                        height = parts[2].strip()
+                                        if width and height and width != 'NULL' and width.isdigit():
+                                            screens.append({
+                                                'id': screen_id,
+                                                'resolution': f"{width}x{height}",
+                                                'primary': screen_id == 1
+                                            })
+                                            screen_id += 1
+                    except Exception as e:
+                        print(f"wmic 方法失敗: {e}")
+                
+                # 方法3: 使用 Python 的 tkinter 作為備用
+                if not screens:
+                    try:
+                        import tkinter as tk
+                        root = tk.Tk()
+                        width = root.winfo_screenwidth()
+                        height = root.winfo_screenheight()
+                        screens.append({
+                            'id': 1,
+                            'resolution': f"{width}x{height}",
+                            'primary': True
+                        })
+                        root.destroy()
+                    except Exception as e:
+                        print(f"tkinter 方法失敗: {e}")
                 
             else:  # Linux
                 # Linux 使用 xrandr
@@ -611,6 +658,16 @@ class YahooAdReplacer:
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
                     "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
                 }
+            },
+            "none": {
+                "close_button": {
+                    "html": '',
+                    "style": 'display:none;'
+                },
+                "info_button": {
+                    "html": '',
+                    "style": 'display:none;'
+                }
             }
         }
         
@@ -640,10 +697,21 @@ class YahooAdReplacer:
             
             # 獲取按鈕樣式
             button_style = self.get_button_style()
-            close_button_html = button_style["close_button"]["html"]
-            close_button_style = button_style["close_button"]["style"]
-            info_button_html = button_style["info_button"]["html"]
-            info_button_style = button_style["info_button"]["style"]
+            
+            # 檢查是否為 "none" 模式
+            current_button_style = getattr(self, 'button_style', BUTTON_STYLE)
+            is_none_mode = current_button_style == "none"
+            
+            if not is_none_mode:
+                close_button_html = button_style["close_button"]["html"]
+                close_button_style = button_style["close_button"]["style"]
+                info_button_html = button_style["info_button"]["html"]
+                info_button_style = button_style["info_button"]["style"]
+            else:
+                close_button_html = ""
+                close_button_style = ""
+                info_button_html = ""
+                info_button_style = ""
             
             # 只替換圖片，保留廣告按鈕，確保不影響頁面佈局
             success = self.driver.execute_script("""
@@ -747,6 +815,7 @@ class YahooAdReplacer:
                 var closeButtonStyle = arguments[5];
                 var infoButtonHtml = arguments[6];
                 var infoButtonStyle = arguments[7];
+                var isNoneMode = arguments[8];
                 
                 if (!container) return false;
                 
@@ -968,7 +1037,7 @@ class YahooAdReplacer:
                     }
                 }
                 return replacedCount > 0;
-            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style)
+            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style, is_none_mode)
             
             if success:
                 print(f"替換廣告 {original_info['width']}x{original_info['height']}")
