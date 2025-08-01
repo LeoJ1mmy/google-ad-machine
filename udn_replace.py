@@ -1257,8 +1257,10 @@ class UdnAdReplacer:
                             monitors = sct.monitors
                             print(f"MSS 偵測到 {len(monitors)-1} 個螢幕: {monitors}")
                             
+                            # MSS monitors[0] 是所有螢幕的組合，實際螢幕從 monitors[1] 開始
+                            # 所以 screen_id=1 對應 monitors[1]，screen_id=2 對應 monitors[2]
                             if self.screen_id < len(monitors):
-                                # 截取指定螢幕
+                                # 截取指定螢幕 (screen_id 直接對應 monitors 索引)
                                 monitor = monitors[self.screen_id]
                                 screenshot_mss = sct.grab(monitor)
                                 
