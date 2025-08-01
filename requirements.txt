@@ -3,3 +3,4 @@ pillow==10.0.1
 beautifulsoup4==4.12.2
 requests==2.31.0
 pyautogui==0.9.54
+pywin32==306

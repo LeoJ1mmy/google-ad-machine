@@ -1131,17 +1131,22 @@ class GoogleAdReplacer:
                             # 如果虛擬螢幕比主螢幕大，說明有多螢幕
                             if virtual_width > screen_width or virtual_height > screen_height:
                                 if self.screen_id == 1:
-                                    # 主螢幕
+                                    # 主螢幕 - 從 (0,0) 開始
                                     screenshot = pyautogui.screenshot(region=(0, 0, screen_width, screen_height))
+                                    print(f"主螢幕截圖區域: (0, 0, {screen_width}, {screen_height})")
                                 elif self.screen_id == 2:
-                                    # 假設第二個螢幕在右側
-                                    screenshot = pyautogui.screenshot(region=(screen_width, 0, virtual_width - screen_width, screen_height))
+                                    # 第二個螢幕 - 計算正確的尺寸
+                                    second_screen_width = virtual_width - screen_width
+                                    screenshot = pyautogui.screenshot(region=(screen_width, 0, second_screen_width, screen_height))
+                                    print(f"副螢幕截圖區域: ({screen_width}, 0, {second_screen_width}, {screen_height})")
                                 else:
-                                    # 其他螢幕，使用全螢幕
-                                    screenshot = pyautogui.screenshot()
+                                    # 其他螢幕，使用全虛擬螢幕
+                                    screenshot = pyautogui.screenshot(region=(0, 0, virtual_width, virtual_height))
+                                    print(f"全虛擬螢幕截圖區域: (0, 0, {virtual_width}, {virtual_height})")
                             else:
                                 # 單螢幕
                                 screenshot = pyautogui.screenshot()
+                                print(f"單螢幕截圖: {screen_width}x{screen_height}")
                                 
                         except Exception as e:
                             print(f"tkinter 方法失敗: {e}，使用基本 pyautogui")
