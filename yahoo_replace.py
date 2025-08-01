@@ -1241,7 +1241,7 @@ class YahooAdReplacer:
                                 print("✅ 廣告位置已復原")
                                 
                                 # 標記該位置為已處理，避免無限循環
-                                position_key = f"top:{ad_info['top']}, left:{ad_info['left']}"
+                                position_key = ad_info['position']
                                 processed_positions.add(position_key)
                                 print(f"📍 標記位置為已處理: {position_key}")
                             except Exception as e:
@@ -1349,7 +1349,10 @@ class YahooAdReplacer:
                         print(f"截圖保存: {filepath}")
                         return filepath
                 except Exception as e:
-                    print(f"❌ MSS 截圖失敗: {e}，使用 pyautogui 備用方案")
+                    print(f"❌ MSS 截圖失敗: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    print("使用 pyautogui 備用方案")
                     try:
                         import pyautogui
                         screenshot = pyautogui.screenshot()
@@ -1420,13 +1423,18 @@ class YahooAdReplacer:
                     return filepath
                 
         except Exception as e:
-            print(f"截圖失敗: {e}，使用 Selenium 截圖")
+            print(f"截圖失敗: {e}")
+            import traceback
+            traceback.print_exc()
+            print("使用 Selenium 截圖")
             try:
                 self.driver.save_screenshot(filepath)
                 print(f"截圖保存: {filepath}")
                 return filepath
             except Exception as e2:
-                print(f"截圖失敗: {e2}")
+                print(f"Selenium 截圖也失敗: {e2}")
+                import traceback
+                traceback.print_exc()
                 return None
     
     def close(self):

@@ -1488,7 +1488,10 @@ class LiuLifeAdReplacer:
                         print(f"截圖保存: {filepath}")
                         return filepath
                 except Exception as e:
-                    print(f"❌ MSS 截圖失敗: {e}，使用 pyautogui 備用方案")
+                    print(f"❌ MSS 截圖失敗: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    print("使用 pyautogui 備用方案")
                     try:
                         import pyautogui
                         screenshot = pyautogui.screenshot()
@@ -1559,13 +1562,18 @@ class LiuLifeAdReplacer:
                     return filepath
                 
         except Exception as e:
-            print(f"截圖失敗: {e}，使用 Selenium 截圖")
+            print(f"截圖失敗: {e}")
+            import traceback
+            traceback.print_exc()
+            print("使用 Selenium 截圖")
             try:
                 self.driver.save_screenshot(filepath)
                 print(f"截圖保存: {filepath}")
                 return filepath
             except Exception as e2:
-                print(f"截圖失敗: {e2}")
+                print(f"Selenium 截圖也失敗: {e2}")
+                import traceback
+                traceback.print_exc()
                 return None
     
     def close(self):
