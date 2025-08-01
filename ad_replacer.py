@@ -1066,79 +1066,106 @@ class GoogleAdReplacer:
             system = platform.system()
             
             if system == "Windows":
-                # Windows 多螢幕截圖
+                # Windows 多螢幕截圖 - 使用更可靠的方法
                 try:
-                    import pyautogui
-                    
-                    # 獲取所有螢幕的資訊
+                    # 方法1: 嘗試使用 PIL 和 win32gui (如果可用)
                     try:
-                        # 使用 PowerShell 獲取螢幕位置資訊
-                        powershell_cmd = '''
-                        Add-Type -AssemblyName System.Windows.Forms
-                        $screens = [System.Windows.Forms.Screen]::AllScreens
-                        for ($i = 0; $i -lt $screens.Length; $i++) {
-                            $screen = $screens[$i]
-                            Write-Output "$($i+1):$($screen.Bounds.X):$($screen.Bounds.Y):$($screen.Bounds.Width):$($screen.Bounds.Height):$($screen.Primary)"
-                        }
-                        '''
-                        result = subprocess.run(['powershell', '-Command', powershell_cmd], 
-                                              capture_output=True, text=True)
+                        import win32gui
+                        import win32con
+                        from PIL import ImageGrab
                         
-                        if result.returncode == 0:
-                            lines = result.stdout.strip().split('\n')
-                            screen_info = {}
-                            for line in lines:
-                                if ':' in line:
-                                    parts = line.strip().split(':')
-                                    if len(parts) >= 6:
-                                        screen_num = int(parts[0])
-                                        x = int(parts[1])
-                                        y = int(parts[2])
-                                        width = int(parts[3])
-                                        height = int(parts[4])
-                                        is_primary = parts[5].lower() == 'true'
-                                        screen_info[screen_num] = {
-                                            'x': x, 'y': y, 'width': width, 'height': height, 'primary': is_primary
-                                        }
+                        # 獲取所有螢幕的資訊
+                        def enum_display_monitors():
+                            monitors = []
+                            def callback(hmonitor, hdc, rect, data):
+                                monitors.append({
+                                    'left': rect[0], 'top': rect[1], 
+                                    'right': rect[2], 'bottom': rect[3],
+                                    'width': rect[2] - rect[0], 'height': rect[3] - rect[1]
+                                })
+                                return True
+                            win32gui.EnumDisplayMonitors(None, None, callback, None)
+                            return monitors
+                        
+                        monitors = enum_display_monitors()
+                        print(f"偵測到 {len(monitors)} 個螢幕")
+                        
+                        if self.screen_id <= len(monitors):
+                            monitor = monitors[self.screen_id - 1]
+                            bbox = (monitor['left'], monitor['top'], monitor['right'], monitor['bottom'])
+                            screenshot = ImageGrab.grab(bbox)
+                            screenshot.save(filepath)
+                            print(f"使用 PIL 截圖 (螢幕 {self.screen_id}): {monitor}")
+                            return filepath
+                        else:
+                            # 螢幕 ID 超出範圍，使用主螢幕
+                            screenshot = ImageGrab.grab()
+                            screenshot.save(filepath)
+                            print(f"螢幕 ID 超出範圍，使用主螢幕截圖")
+                            return filepath
                             
-                            # 使用正確的螢幕座標截圖
-                            if self.screen_id in screen_info:
-                                screen = screen_info[self.screen_id]
-                                screenshot = pyautogui.screenshot(region=(screen['x'], screen['y'], screen['width'], screen['height']))
-                                print(f"使用螢幕 {self.screen_id} 座標: x={screen['x']}, y={screen['y']}, w={screen['width']}, h={screen['height']}")
-                            else:
-                                # 回退到預設方法
-                                if self.screen_id > 1:
-                                    screen_offset = (self.screen_id - 1) * 1920
-                                    screenshot = pyautogui.screenshot(region=(screen_offset, 0, 1920, 1080))
+                    except ImportError:
+                        print("win32gui 或 PIL 未安裝，嘗試 pyautogui")
+                        
+                        # 方法2: 使用 pyautogui
+                        import pyautogui
+                        
+                        # 嘗試使用 tkinter 獲取螢幕資訊
+                        try:
+                            import tkinter as tk
+                            root = tk.Tk()
+                            
+                            # 獲取主螢幕尺寸
+                            screen_width = root.winfo_screenwidth()
+                            screen_height = root.winfo_screenheight()
+                            
+                            # 嘗試獲取虛擬螢幕尺寸（包含所有螢幕）
+                            virtual_width = root.winfo_vrootwidth() if hasattr(root, 'winfo_vrootwidth') else screen_width
+                            virtual_height = root.winfo_vrootheight() if hasattr(root, 'winfo_vrootheight') else screen_height
+                            
+                            root.destroy()
+                            
+                            print(f"主螢幕: {screen_width}x{screen_height}")
+                            print(f"虛擬螢幕: {virtual_width}x{virtual_height}")
+                            
+                            # 如果虛擬螢幕比主螢幕大，說明有多螢幕
+                            if virtual_width > screen_width or virtual_height > screen_height:
+                                if self.screen_id == 1:
+                                    # 主螢幕
+                                    screenshot = pyautogui.screenshot(region=(0, 0, screen_width, screen_height))
+                                elif self.screen_id == 2:
+                                    # 假設第二個螢幕在右側
+                                    screenshot = pyautogui.screenshot(region=(screen_width, 0, virtual_width - screen_width, screen_height))
                                 else:
+                                    # 其他螢幕，使用全螢幕
                                     screenshot = pyautogui.screenshot()
-                        else:
-                            # PowerShell 失敗，使用預設方法
-                            if self.screen_id > 1:
-                                screen_offset = (self.screen_id - 1) * 1920
-                                screenshot = pyautogui.screenshot(region=(screen_offset, 0, 1920, 1080))
                             else:
+                                # 單螢幕
                                 screenshot = pyautogui.screenshot()
-                    except Exception as e:
-                        print(f"獲取螢幕資訊失敗: {e}，使用預設方法")
-                        if self.screen_id > 1:
-                            screen_offset = (self.screen_id - 1) * 1920
-                            screenshot = pyautogui.screenshot(region=(screen_offset, 0, 1920, 1080))
-                        else:
-                            screenshot = pyautogui.screenshot()
-                    
-                    screenshot.save(filepath)
-                    print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
-                    return filepath
-                    
+                                
+                        except Exception as e:
+                            print(f"tkinter 方法失敗: {e}，使用基本 pyautogui")
+                            # 基本的 pyautogui 截圖
+                            if self.screen_id == 1:
+                                screenshot = pyautogui.screenshot()
+                            else:
+                                # 嘗試右側螢幕
+                                try:
+                                    screenshot = pyautogui.screenshot(region=(1920, 0, 1920, 1080))
+                                except:
+                                    screenshot = pyautogui.screenshot()
+                        
+                        screenshot.save(filepath)
+                        print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
+                        return filepath
+                        
                 except ImportError:
                     print("pyautogui 未安裝，使用 Selenium 截圖")
                     self.driver.save_screenshot(filepath)
                     print(f"截圖保存: {filepath}")
                     return filepath
                 except Exception as e:
-                    print(f"pyautogui 截圖失敗: {e}，使用 Selenium 截圖")
+                    print(f"Windows 截圖失敗: {e}，使用 Selenium 截圖")
                     self.driver.save_screenshot(filepath)
                     print(f"截圖保存: {filepath}")
                     return filepath
