@@ -1378,6 +1378,9 @@ class EttodayAdReplacer:
                                 screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
                                 print(f"⚠️ 螢幕 {self.screen_id} 不存在，使用主螢幕: {monitor}")
                         
+                        screenshot.save(filepath)
+                        print(f"✅ MSS 截圖保存 (螢幕 {self.screen_id}): {filepath}")
+                        return filepath
                         
                 except ImportError:
                     print("❌ MSS 未安裝，使用 pyautogui 備用方案")
