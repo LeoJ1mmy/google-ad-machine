@@ -734,6 +734,10 @@ class UdnAdReplacer:
             info_button_html = button_style["info_button"]["html"]
             info_button_style = button_style["info_button"]["style"]
             
+            # 檢查是否為 "none" 模式
+            current_button_style = getattr(self, 'button_style', 'dots')
+            is_none_mode = current_button_style == "none"
+            
             # 只替換圖片，保留廣告按鈕
             success = self.driver.execute_script("""
                 // 添加 Google 廣告標準樣式
