@@ -1314,56 +1314,56 @@ class UdnAdReplacer:
                     except ImportError:
                         print("win32gui 或 PIL 未安裝，嘗試 pyautogui")
                         
-                        # 方法2: 直接使用 MSS 庫 - 最可靠的多螢幕截圖方法
-                        try:
-                            import mss
-                            with mss.mss() as sct:
-                                monitors = sct.monitors
-                                print(f"MSS 偵測到 {len(monitors)-1} 個螢幕: {monitors}")
+                        # 直接使用 MSS 庫 - 最可靠的多螢幕截圖方法
+                        import mss
+                        with mss.mss() as sct:
+                            monitors = sct.monitors
+                            print(f"MSS 偵測到 {len(monitors)-1} 個螢幕: {monitors}")
+                            
+                            if self.screen_id < len(monitors):
+                                # 截取指定螢幕
+                                monitor = monitors[self.screen_id]
+                                screenshot_mss = sct.grab(monitor)
                                 
-                                if self.screen_id < len(monitors):
-                                    # 截取指定螢幕
-                                    monitor = monitors[self.screen_id]
-                                    screenshot_mss = sct.grab(monitor)
-                                    
-                                    # 轉換為 PIL Image
-                                    from PIL import Image
-                                    screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
-                                    print(f"✅ 使用 MSS 截取螢幕 {self.screen_id}: {monitor}")
-                                    print(f"   截圖尺寸: {screenshot.size}")
-                                else:
-                                    # 螢幕 ID 超出範圍，使用主螢幕
-                                    monitor = monitors[1]  # 主螢幕
-                                    screenshot_mss = sct.grab(monitor)
-                                    from PIL import Image
-                                    screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
-                                    print(f"⚠️ 螢幕 {self.screen_id} 不存在，使用主螢幕: {monitor}")
-                                    
-                        except ImportError:
-                            print("❌ MSS 未安裝，使用 pyautogui 備用方案")
-                            import pyautogui
-                            screenshot = pyautogui.screenshot()
-                            print("使用 pyautogui 截取主螢幕")
-                        except Exception as e:
-                            print(f"❌ MSS 截圖失敗: {e}，使用 pyautogui 備用方案")
-                            import pyautogui
-                            screenshot = pyautogui.screenshot()
-                            print("使用 pyautogui 截取主螢幕")
-                        
-                        screenshot.save(filepath)
-                        print(f"截圖保存 (螢幕 {self.screen_id}): {filepath}")
-                        return filepath
+                                # 轉換為 PIL Image
+                                from PIL import Image
+                                screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
+                                print(f"✅ 使用 MSS 截取螢幕 {self.screen_id}: {monitor}")
+                                print(f"   截圖尺寸: {screenshot.size}")
+                            else:
+                                # 螢幕 ID 超出範圍，使用主螢幕
+                                monitor = monitors[1]  # 主螢幕
+                                screenshot_mss = sct.grab(monitor)
+                                from PIL import Image
+                                screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
+                                print(f"⚠️ 螢幕 {self.screen_id} 不存在，使用主螢幕: {monitor}")
                         
                 except ImportError:
-                    print("pyautogui 未安裝，使用 Selenium 截圖")
-                    self.driver.save_screenshot(filepath)
-                    print(f"截圖保存: {filepath}")
-                    return filepath
+                    print("❌ MSS 未安裝，使用 pyautogui 備用方案")
+                    try:
+                        import pyautogui
+                        screenshot = pyautogui.screenshot()
+                        screenshot.save(filepath)
+                        print(f"✅ pyautogui 截圖保存: {filepath}")
+                        return filepath
+                    except:
+                        print("pyautogui 也失敗，使用 Selenium 截圖")
+                        self.driver.save_screenshot(filepath)
+                        print(f"截圖保存: {filepath}")
+                        return filepath
                 except Exception as e:
-                    print(f"Windows 截圖失敗: {e}，使用 Selenium 截圖")
-                    self.driver.save_screenshot(filepath)
-                    print(f"截圖保存: {filepath}")
-                    return filepath
+                    print(f"❌ MSS 截圖失敗: {e}，使用 pyautogui 備用方案")
+                    try:
+                        import pyautogui
+                        screenshot = pyautogui.screenshot()
+                        screenshot.save(filepath)
+                        print(f"✅ pyautogui 截圖保存: {filepath}")
+                        return filepath
+                    except:
+                        print("pyautogui 也失敗，使用 Selenium 截圖")
+                        self.driver.save_screenshot(filepath)
+                        print(f"截圖保存: {filepath}")
+                        return filepath
                     
             elif system == "Darwin":  # macOS
                 # macOS 多螢幕截圖
