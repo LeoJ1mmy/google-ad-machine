@@ -39,6 +39,8 @@ MAX_CONSECUTIVE_FAILURES = 3  # 連續10次找不到對應尺寸就換下一張�
 BASE_URL = "https://playing.ltn.com.tw"  # 基礎網址 (自由時報)
 YAHOO_BASE_URL = "https://tw.news.yahoo.com/fun/"  # Yahoo 新聞娛樂版面
 LIULIFE_BASE_URL = "https://liulifejp.com"  # LiuLife 部落格
+TVBS_BASE_URL = "https://supertaste.tvbs.com.tw"  # TVBS 食尚玩家主網站
+NICKLEE_BASE_URL = "https://nicklee.tw"  # Nicklee.tw 部落格
 NEWS_COUNT = 20             # 每次搜尋的新聞數量
 
 # 目標廣告尺寸 (寬度x高度)
@@ -57,6 +59,15 @@ YAHOO_TARGET_AD_SIZES = [
     {"width": 336, "height": 280}
 ]
 
+# Nicklee.tw 特定的廣告尺寸
+NICKLEE_TARGET_AD_SIZES = [
+    {"width": 970, "height": 90},
+    {"width": 728, "height": 90},
+    {"width": 300, "height": 250},
+    {"width": 320, "height": 50},
+    {"width": 336, "height": 280}
+]
+
 # 按鈕設定
 CLOSE_BUTTON_SIZE = {"width": 15, "height": 15}  # 關閉按鈕大小
 INFO_BUTTON_SIZE = {"width": 15, "height": 15}   # 資訊按鈕大小 (與關閉按鈕一致)
@@ -64,7 +75,7 @@ INFO_BUTTON_COLOR = "#00aecd"                     # 資訊按鈕顏色 (Google�
 INFO_BUTTON_OFFSET = 16                          # 資訊按鈕偏移量
 
 # 按鈕樣式設定 - 只需要修改這個變數即可切換樣式
-BUTTON_STYLE = "none"  # 可選: "dots" (驚嘆號+點點), "cross" (驚嘆號+叉叉), "adchoices" (AdChoices+叉叉), "adchoices_dots" (AdChoices+點點), "none" (無按鈕)
+BUTTON_STYLE = "dots"  # 可選: "dots" (驚嘆號+點點), "cross" (驚嘆號+叉叉), "adchoices" (AdChoices+叉叉), "adchoices_dots" (AdChoices+點點), "none" (無按鈕)
 
 # 瀏覽器設定
 HEADLESS_MODE = False       # 無頭模式 (True/False)
