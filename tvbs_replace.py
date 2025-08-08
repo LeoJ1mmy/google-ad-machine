@@ -251,6 +251,10 @@ class ScreenManager:
         return None
 
 class TvbsAdReplacer:
+    """
+    多網站廣告替換器
+    支援 TVBS 食尚玩家 (supertaste.tvbs.com.tw) 和 nicklee.tw 網站
+    """
     def __init__(self, headless=False, screen_id=1):
         self.screen_id = screen_id
         self.setup_driver(headless)
@@ -345,22 +349,130 @@ class TvbsAdReplacer:
         with open(image_path, 'rb') as f:
             return base64.b64encode(f.read()).decode('utf-8')
     
+    def _is_valid_nicklee_url(self, url):
+        """檢查是否為有效的 nicklee.tw 文章 URL，嚴格過濾外部連結"""
+        if not url:
+            return False
+        
+        # 絕對不能包含外部域名，即使 URL 參數中有 nicklee.tw
+        external_domains = [
+            'facebook.com', 'fb.com', 'twitter.com', 'x.com', 't.co',
+            'instagram.com', 'youtube.com', 'linkedin.com', 'pinterest.com',
+            'google.com', 'gmail.com', 'yahoo.com', 'bing.com',
+            'amazon.com', 'booking.com', 'agoda.com', 'expedia.com',
+            'line.me', 'telegram.org', 'whatsapp.com', 'wechat.com',
+            'apple.com', 'microsoft.com', 'adobe.com'
+        ]
+        
+        # 檢查是否包含外部域名 - 這是最重要的檢查
+        url_lower = url.lower()
+        for domain in external_domains:
+            if domain in url_lower:
+                print(f"    ❌ 過濾外部網站連結: {domain} in {url[:60]}...")
+                return False
+        
+        # 必須以 https://nicklee.tw 開頭，排除所有外部網站
+        if not url.startswith('https://nicklee.tw'):
+            print(f"    ❌ 非 nicklee.tw 域名: {url[:60]}...")
+            return False
+        
+        # 排除分享連結模式
+        share_patterns = ['sharer.php', 'share?', '/share/', 'utm_source', 'utm_medium']
+        for pattern in share_patterns:
+            if pattern in url_lower:
+                print(f"    ❌ 過濾分享連結: {pattern} in {url[:60]}...")
+                return False
+        
+        # 排除的 URL 模式
+        excluded_patterns = [
+            '#', 'javascript:', 'mailto:', 'tel:', 'sms:', 'ftp:',
+            '/category/', '/tag/', '/author/', '/wp-admin', '/wp-content',
+            '/wp-includes', '/feed', '.xml', '.rss', '.json',
+            '/login', '/register', '/admin', '/dashboard',
+            '/search', '/archive', '/sitemap'
+        ]
+        
+        # 檢查排除模式
+        for pattern in excluded_patterns:
+            if pattern in url_lower:
+                return False
+        
+        # 排除圖片和媒體檔案
+        media_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', 
+                           '.mp4', '.mp3', '.pdf', '.zip', '.rar']
+        for ext in media_extensions:
+            if url_lower.endswith(ext):
+                return False
+        
+        # 檢查是否為文章 URL（包含數字ID、年份等）
+        article_patterns = ['/20', '/19', '/post-', '/article-', '/?p=']
+        has_article_pattern = any(pattern in url for pattern in article_patterns)
+        has_numeric_id = re.search(r'/\d+/', url)
+        
+        # 必須符合文章 URL 模式
+        if has_article_pattern or has_numeric_id:
+            print(f"    ✅ 有效文章連結: {url[:60]}...")
+            return True
+        else:
+            print(f"    ❌ 不符合文章 URL 模式: {url[:60]}...")
+            return False
+    
+    def _is_valid_tvbs_url(self, url):
+        """檢查是否為有效的 TVBS 文章 URL"""
+        if not url:
+            return False
+        
+        # 必須是 TVBS 域名
+        if 'supertaste.tvbs.com.tw' not in url:
+            return False
+        
+        # 排除社交媒體連結
+        external_domains = [
+            'facebook.com', 'fb.com', 'twitter.com', 'x.com', 't.co',
+            'instagram.com', 'youtube.com', 'google.com'
+        ]
+        
+        url_lower = url.lower()
+        for domain in external_domains:
+            if domain in url_lower:
+                return False
+        
+        # 必須包含旅遊或生活相關路徑
+        return ('/travel/' in url or '/life/' in url or 
+                any(pattern in url for pattern in ['/article/', '/post/']))
+
     def get_random_news_urls(self, base_url, count=5):
         try:
             self.driver.get(base_url)
             time.sleep(WAIT_TIME)
             
-            # TVBS 食尚玩家的文章連結選擇器 - 根據實際 HTML 結構
-            link_selectors = [
-                "a.article__item[href*='/travel/']",
-                "a.article__item[href*='/life/']",
-                "a.article__item"  # 所有文章項目
-            ]
+            # 根據網站類型選擇不同的選擇器，嚴格避免社交媒體分享按鈕
+            if 'nicklee.tw' in base_url:
+                # Nicklee.tw 網站的文章連結選擇器 - 只選擇特定區域的連結，明確排除社交媒體分享區域
+                link_selectors = [
+                    "ul.blog-grid li article h2.post-title a",                              # 文章標題連結
+                    "ul.blog-grid li article .post-media a:not(.facebook-share):not(.twitter-share)",  # 圖片連結（排除分享按鈕）
+                    "ul.blog-grid li article .read-more a",                                 # "繼續閱讀"連結
+                    ".blog-post h2.post-title a",                                           # 備用：標題連結
+                    ".blog-post .post-media a:not(.facebook-share):not(.twitter-share)"    # 備用：圖片連結（排除分享按鈕）
+                ]
+            else:
+                # TVBS 食尚玩家的文章連結選擇器
+                link_selectors = [
+                    "a.article__item[href*='/travel/'][href*='supertaste.tvbs.com.tw']",
+                    "a.article__item[href*='/life/'][href*='supertaste.tvbs.com.tw']",
+                    "a.article__item[href*='supertaste.tvbs.com.tw']"  # 只選擇 TVBS 域名的連結
+                ]
             
             news_urls = []
             
-            for selector in link_selectors:
+            for i, selector in enumerate(link_selectors, 1):
+                print(f"使用選擇器 {i}/{len(link_selectors)}")
                 links = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                print(f"  找到 {len(links)} 個連結")
+                
+                valid_count = 0
+                invalid_count = 0
                 for link in links:
                     href = link.get_attribute('href')
                     if href and href not in news_urls:
@@ -370,19 +482,47 @@ class TvbsAdReplacer:
                         else:
                             full_url = href
                         
-                        # 只收集 TVBS 的文章連結，排除廣告和其他連結
-                        if ('supertaste.tvbs.com.tw' in full_url and 
-                            ('/travel/' in full_url or '/' in full_url or '/life/' in full_url)):
-                            news_urls.append(full_url)
+                        # 根據網站類型過濾連結
+                        if 'nicklee.tw' in base_url:
+                            # 只收集 nicklee.tw 的文章連結，嚴格過濾外部連結
+                            if self._is_valid_nicklee_url(full_url):
+                                news_urls.append(full_url)
+                                valid_count += 1
+                            else:
+                                invalid_count += 1
+                                # 只顯示被過濾的外部連結作為調試
+                                if 'facebook.com' in full_url or 'twitter.com' in full_url or 'x.com' in full_url:
+                                    print(f"    ❌ 過濾社交媒體連結: {full_url[:60]}...")
+                        else:
+                            # 只收集 TVBS 的文章連結，排除廣告和其他連結
+                            if self._is_valid_tvbs_url(full_url):
+                                news_urls.append(full_url)
+                                valid_count += 1
+                            else:
+                                invalid_count += 1
+                
+                print(f"  選擇器 {i} 結果: {valid_count} 個有效連結, {invalid_count} 個無效連結")
+            
+            # 去除重複的 URL
+            news_urls = list(set(news_urls))
             
             print(f"找到 {len(news_urls)} 個新聞連結")
             if news_urls:
                 selected_urls = random.sample(news_urls, min(count, len(news_urls)))
+                print(f"隨機選擇了 {len(selected_urls)} 個連結:")
                 for i, url in enumerate(selected_urls):
                     print(f"  {i+1}. {url}")
                 return selected_urls
             else:
                 print("未找到任何新聞連結")
+                print("可能的原因:")
+                if 'nicklee.tw' in base_url:
+                    print("  1. nicklee.tw 網站結構可能已變更")
+                    print("  2. 網頁載入不完整，請檢查網路連線")
+                    print("  3. CSS 選擇器需要更新")
+                else:
+                    print("  1. TVBS 網站結構可能已變更")
+                    print("  2. 網頁載入不完整，請檢查網路連線")
                 return []
                         
         except Exception as e:
@@ -528,32 +668,32 @@ class TvbsAdReplacer:
         """根據配置返回按鈕樣式 - 完全複製 ad_replacer.py 的邏輯"""
         button_style = getattr(self, 'button_style', BUTTON_STYLE)
         
-        # 預先定義的按鈕樣式
-        # 統一的資訊按鈕樣式 - 使用 Google 標準設計
-        unified_info_button = {
-            "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
-            "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
-        }
-        
+        # 簡化的按鈕樣式，避免複雜的 SVG 造成 JavaScript 錯誤
         button_styles = {
             "dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "html": '⋮',  # 使用 Unicode 字符代替 SVG
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 },
-                "info_button": unified_info_button
+                "info_button": {
+                    "html": 'ⓘ',  # 使用 Unicode 字符代替 SVG
+                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
+                }
             },
             "cross": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "html": '✕',  # 使用 Unicode 字符代替 SVG
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 },
-                "info_button": unified_info_button
+                "info_button": {
+                    "html": 'ⓘ',  # 使用 Unicode 字符代替 SVG
+                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
+                }
             },
             "adchoices": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "html": '✕',  # 使用 Unicode 字符代替 SVG
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
@@ -562,8 +702,8 @@ class TvbsAdReplacer:
             },
             "adchoices_dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "html": '⋮',  # 使用 Unicode 字符代替 SVG
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
@@ -641,130 +781,141 @@ class TvbsAdReplacer:
                 info_button_style = ""
             
             # 完整的替換邏輯 - 處理各種廣告元素類型
-            success = self.driver.execute_script("""
-                var container = arguments[0];
-                var imageBase64 = arguments[1];
-                var targetWidth = arguments[2];
-                var targetHeight = arguments[3];
-                var closeButtonHtml = arguments[4];
-                var closeButtonStyle = arguments[5];
-                var infoButtonHtml = arguments[6];
-                var infoButtonStyle = arguments[7];
-                var isNoneMode = arguments[8];
-                
-                if (!container) return false;
-                
-                var replacedCount = 0;
-                var newImageSrc = 'data:image/png;base64,' + imageBase64;
-                
-                // 確保容器是 relative
-                if (window.getComputedStyle(container).position === 'static') {
-                    container.style.position = 'relative';
-                }
-                
-                // 方法1: 處理圖片元素
-                var imgs = container.querySelectorAll('img');
-                for (var i = 0; i < imgs.length; i++) {
-                    var img = imgs[i];
-                    var imgRect = img.getBoundingClientRect();
+            # 分步執行 JavaScript 以避免語法錯誤
+            try:
+                # 第一步：基本替換
+                success = self.driver.execute_script("""
+                    var container = arguments[0];
+                    var imageBase64 = arguments[1];
+                    var targetWidth = arguments[2];
+                    var targetHeight = arguments[3];
                     
-                    // 排除控制按鈕
-                    var isControlButton = imgRect.width < 50 || imgRect.height < 50 || 
-                                         img.className.includes('abg') || 
-                                         img.id.includes('abg') ||
-                                         img.src.includes('googleads') ||
-                                         img.src.includes('googlesyndication') ||
-                                         img.src.includes('adchoices');
+                    if (!container) return false;
                     
-                    if (!isControlButton && img.src && !img.src.startsWith('data:')) {
-                        img.src = newImageSrc;
-                        img.style.objectFit = 'contain';
-                        img.style.width = '100%';
-                        img.style.height = 'auto';
+                    var replacedCount = 0;
+                    var newImageSrc = 'data:image/png;base64,' + imageBase64;
+                    
+                    // 確保容器是 relative
+                    if (window.getComputedStyle(container).position === 'static') {
+                        container.style.position = 'relative';
+                    }
+                    
+                    // 方法1: 處理圖片元素
+                    var imgs = container.querySelectorAll('img');
+                    for (var i = 0; i < imgs.length; i++) {
+                        var img = imgs[i];
+                        var imgRect = img.getBoundingClientRect();
+                        
+                        // 排除控制按鈕
+                        var isControlButton = imgRect.width < 50 || imgRect.height < 50 || 
+                                             (img.className && img.className.includes('abg')) || 
+                                             (img.id && img.id.includes('abg')) ||
+                                             (img.src && img.src.includes('googleads')) ||
+                                             (img.src && img.src.includes('googlesyndication')) ||
+                                             (img.src && img.src.includes('adchoices'));
+                        
+                        if (!isControlButton && img.src && !img.src.startsWith('data:')) {
+                            img.src = newImageSrc;
+                            img.style.objectFit = 'contain';
+                            img.style.width = '100%';
+                            img.style.height = 'auto';
+                            replacedCount++;
+                        }
+                    }
+                    
+                    // 方法2: 處理 iframe 元素
+                    var iframes = container.querySelectorAll('iframe');
+                    for (var i = 0; i < iframes.length; i++) {
+                        var iframe = iframes[i];
+                        var iframeRect = iframe.getBoundingClientRect();
+                        
+                        // 隱藏 iframe
+                        iframe.style.visibility = 'hidden';
+                        
+                        // 創建替換圖片
+                        var newImg = document.createElement('img');
+                        newImg.src = newImageSrc;
+                        newImg.style.position = 'absolute';
+                        newImg.style.top = (iframeRect.top - container.getBoundingClientRect().top) + 'px';
+                        newImg.style.left = (iframeRect.left - container.getBoundingClientRect().left) + 'px';
+                        newImg.style.width = Math.round(iframeRect.width) + 'px';
+                        newImg.style.height = Math.round(iframeRect.height) + 'px';
+                        newImg.style.objectFit = 'contain';
+                        newImg.style.zIndex = '1';
+                        
+                        container.appendChild(newImg);
                         replacedCount++;
                     }
-                }
-                
-                // 方法2: 處理 iframe 元素
-                var iframes = container.querySelectorAll('iframe');
-                for (var i = 0; i < iframes.length; i++) {
-                    var iframe = iframes[i];
-                    var iframeRect = iframe.getBoundingClientRect();
                     
-                    // 隱藏 iframe
-                    iframe.style.visibility = 'hidden';
-                    
-                    // 創建替換圖片
-                    var newImg = document.createElement('img');
-                    newImg.src = newImageSrc;
-                    newImg.style.position = 'absolute';
-                    newImg.style.top = (iframeRect.top - container.getBoundingClientRect().top) + 'px';
-                    newImg.style.left = (iframeRect.left - container.getBoundingClientRect().left) + 'px';
-                    newImg.style.width = Math.round(iframeRect.width) + 'px';
-                    newImg.style.height = Math.round(iframeRect.height) + 'px';
-                    newImg.style.objectFit = 'contain';
-                    newImg.style.zIndex = '1';
-                    
-                    container.appendChild(newImg);
-                    replacedCount++;
-                }
-                
-                // 方法3: 處理 div 容器（直接替換內容）
-                if (container.tagName.toLowerCase() === 'div') {
-                    // 清空容器內容
-                    container.innerHTML = '';
-                    
-                    // 創建新圖片
-                    var newImg = document.createElement('img');
-                    newImg.src = newImageSrc;
-                    newImg.style.width = '100%';
-                    newImg.style.height = '100%';
-                    newImg.style.objectFit = 'contain';
-                    newImg.style.display = 'block';
-                    
-                    container.appendChild(newImg);
-                    replacedCount++;
-                }
-                
-                // 方法4: 處理背景圖片
-                if (replacedCount === 0) {
-                    var style = window.getComputedStyle(container);
-                    if (style.backgroundImage && style.backgroundImage !== 'none') {
-                        container.style.backgroundImage = 'url(' + newImageSrc + ')';
-                        container.style.backgroundSize = 'contain';
-                        container.style.backgroundRepeat = 'no-repeat';
-                        container.style.backgroundPosition = 'center';
-                        replacedCount = 1;
-                    }
-                }
-                
-                // 添加控制按鈕
-                if (replacedCount > 0 && !isNoneMode) {
-                    // 移除舊按鈕
-                    var oldClose = container.querySelector('#close_button');
-                    var oldInfo = container.querySelector('#abgb');
-                    if (oldClose) oldClose.remove();
-                    if (oldInfo) oldInfo.remove();
-                    
-                    if (closeButtonHtml) {
-                        var closeButton = document.createElement('div');
-                        closeButton.id = 'close_button';
-                        closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = closeButtonStyle;
-                        container.appendChild(closeButton);
+                    // 方法3: 處理 div 容器（直接替換內容）
+                    if (container.tagName.toLowerCase() === 'div') {
+                        // 清空容器內容
+                        container.innerHTML = '';
+                        
+                        // 創建新圖片
+                        var newImg = document.createElement('img');
+                        newImg.src = newImageSrc;
+                        newImg.style.width = '100%';
+                        newImg.style.height = '100%';
+                        newImg.style.objectFit = 'contain';
+                        newImg.style.display = 'block';
+                        
+                        container.appendChild(newImg);
+                        replacedCount++;
                     }
                     
-                    if (infoButtonHtml) {
-                        var infoButton = document.createElement('div');
-                        infoButton.id = 'abgb';
-                        infoButton.innerHTML = infoButtonHtml;
-                        infoButton.style.cssText = infoButtonStyle;
-                        container.appendChild(infoButton);
+                    // 方法4: 處理背景圖片
+                    if (replacedCount === 0) {
+                        var style = window.getComputedStyle(container);
+                        if (style.backgroundImage && style.backgroundImage !== 'none') {
+                            container.style.backgroundImage = 'url(' + newImageSrc + ')';
+                            container.style.backgroundSize = 'contain';
+                            container.style.backgroundRepeat = 'no-repeat';
+                            container.style.backgroundPosition = 'center';
+                            replacedCount = 1;
+                        }
                     }
-                }
+                    
+                    return replacedCount > 0;
+                """, element, image_data, target_width, target_height)
                 
-                return replacedCount > 0;
-            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style, is_none_mode)
+                # 第二步：添加控制按鈕（如果需要）
+                if success and not is_none_mode:
+                    self.driver.execute_script("""
+                        var container = arguments[0];
+                        var closeButtonHtml = arguments[1];
+                        var closeButtonStyle = arguments[2];
+                        var infoButtonHtml = arguments[3];
+                        var infoButtonStyle = arguments[4];
+                        
+                        // 移除舊按鈕
+                        var oldClose = container.querySelector('#close_button');
+                        var oldInfo = container.querySelector('#abgb');
+                        if (oldClose) oldClose.remove();
+                        if (oldInfo) oldInfo.remove();
+                        
+                        // 添加關閉按鈕
+                        if (closeButtonHtml) {
+                            var closeButton = document.createElement('div');
+                            closeButton.id = 'close_button';
+                            closeButton.innerHTML = closeButtonHtml;
+                            closeButton.style.cssText = closeButtonStyle;
+                            container.appendChild(closeButton);
+                        }
+                        
+                        // 添加資訊按鈕
+                        if (infoButtonHtml) {
+                            var infoButton = document.createElement('div');
+                            infoButton.id = 'abgb';
+                            infoButton.innerHTML = infoButtonHtml;
+                            infoButton.style.cssText = infoButtonStyle;
+                            container.appendChild(infoButton);
+                        }
+                    """, element, close_button_html, close_button_style, info_button_html, info_button_style)
+                
+            except Exception as js_error:
+                print(f"JavaScript 執行錯誤: {js_error}")
+                return False
             
             if success:
                 print(f"✅ 替換廣告成功 {original_info['width']}x{original_info['height']}")
@@ -1114,6 +1265,18 @@ class TvbsAdReplacer:
         self.driver.quit()
 
 def main():
+    """
+    主程式入口
+    
+    目前設定為處理 nicklee.tw 網站
+    如要切換到 TVBS 食尚玩家，請將下方的 NICKLEE_BASE_URL 改為 TVBS_BASE_URL
+    """
+    print("="*60)
+    print("多網站廣告替換器")
+    print("目前設定: nicklee.tw")
+    print("如要切換網站，請修改 main() 函數中的 BASE_URL 設定")
+    print("="*60)
+    
     # 偵測並選擇螢幕
     screen_id, selected_screen = ScreenManager.select_screen()
     
@@ -1125,8 +1288,10 @@ def main():
     bot = TvbsAdReplacer(headless=False, screen_id=screen_id)
     
     try:
-        # 尋找新聞連結
-        news_urls = bot.get_random_news_urls(TVBS_BASE_URL, NEWS_COUNT)
+        # 尋找新聞連結 - 可以選擇不同的網站
+        # 使用 NICKLEE_BASE_URL 來處理 nicklee.tw 網站
+        # 或使用 TVBS_BASE_URL 來處理 TVBS 食尚玩家網站
+        news_urls = bot.get_random_news_urls(NICKLEE_BASE_URL, NEWS_COUNT)
         
         if not news_urls:
             print("無法獲取新聞連結")
