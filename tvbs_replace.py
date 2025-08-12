@@ -12,6 +12,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from datetime import datetime
+from urllib.parse import urlparse
 
 # 載入設定檔
 try:
@@ -426,25 +427,53 @@ class TvbsAdReplacer:
         if 'supertaste.tvbs.com.tw' not in url:
             return False
         
-        # 排除社交媒體連結
-        external_domains = [
-            'facebook.com', 'fb.com', 'twitter.com', 'x.com', 't.co',
-            'instagram.com', 'youtube.com', 'google.com'
-        ]
-        
         url_lower = url.lower()
-        for domain in external_domains:
-            if domain in url_lower:
-                return False
+        parsed = urlparse(url_lower)
+        path = parsed.path or ''
         
-        # 必須包含旅遊或生活相關路徑
-        return ('/travel/' in url or '/life/' in url or 
-                any(pattern in url for pattern in ['/article/', '/post/']))
+        # 排除明顯的廣告/推薦容器（taboola 等）與非內容頁
+        excluded_keywords = ['taboola', 'utm_', 'sharer.php', 'share?', '/share/']
+        if any(kw in url_lower for kw in excluded_keywords):
+            return False
+
+        # 不接受純分類頁（避免只進到列表）
+        category_only_paths = ['/', '/travel', '/travel/', '/life', '/life/']
+        if path in category_only_paths:
+            return False
+
+        # 內容頁規則（符合其一即可）：
+        # 1) /travel/<數字>
+        # 2) /life/<數字>
+        # 3) 含 /article/ 或 /post/
+        # 4) 結尾為 .html
+        import re
+        is_travel_id = re.search(r'^/travel/\d+(?:/)?$', path) is not None
+        is_life_id = re.search(r'^/life/\d+(?:/)?$', path) is not None
+        has_article_slug = ('/article/' in path) or ('/post/' in path)
+        has_html = path.endswith('.html')
+        
+        return is_travel_id or is_life_id or has_article_slug or has_html
 
     def get_random_news_urls(self, base_url, count=5):
         try:
             self.driver.get(base_url)
             time.sleep(WAIT_TIME)
+            # 追加等待與懶載入觸發
+            try:
+                state = self.driver.execute_script("return document.readyState;")
+                print(f"頁面 readyState: {state}")
+            except Exception:
+                pass
+            # 初步觸發懶載入
+            try:
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+                time.sleep(1.5)
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
+                self.driver.execute_script("window.scrollTo(0, 0);")
+                time.sleep(1)
+            except Exception:
+                pass
             
             # 根據網站類型選擇不同的選擇器，嚴格避免社交媒體分享按鈕
             if 'nicklee.tw' in base_url:
@@ -457,55 +486,116 @@ class TvbsAdReplacer:
                     ".blog-post .post-media a:not(.facebook-share):not(.twitter-share)"    # 備用：圖片連結（排除分享按鈕）
                 ]
             else:
-                # TVBS 食尚玩家的文章連結選擇器
+                # TVBS 食尚玩家的文章連結選擇器（擴充與備援），特別處理 .article__content 區塊與 a.article__item
                 link_selectors = [
-                    "a.article__item[href*='/travel/'][href*='supertaste.tvbs.com.tw']",
-                    "a.article__item[href*='/life/'][href*='supertaste.tvbs.com.tw']",
-                    "a.article__item[href*='supertaste.tvbs.com.tw']"  # 只選擇 TVBS 域名的連結
+                    # 首選：分類頁（旅行）中的內容卡片
+                    ".article__content > a.article__item[href]",
+                    "a.article__item[href]",
+                    "div.article__content a.article__item[href]",
+                    # 以內容頁為優先
+                    "a[href*='/article/'][href*='supertaste.tvbs.com.tw']",
+                    "a[href^='/article/']",
+                    # 旅行/生活列表含與不含 .html 的情況
+                    "a[href*='/travel/']",
+                    "a[href*='/life/']",
+                    # 其他常見位置
+                    "article a[href]",
+                    "h3 a[href]",
+                    ".article__item a[href]",
+                    "a[href*='supertaste.tvbs.com.tw']",
                 ]
             
             news_urls = []
-            
-            for i, selector in enumerate(link_selectors, 1):
-                print(f"使用選擇器 {i}/{len(link_selectors)}")
-                links = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                print(f"  找到 {len(links)} 個連結")
-                
-                valid_count = 0
-                invalid_count = 0
-                for link in links:
-                    href = link.get_attribute('href')
-                    if href and href not in news_urls:
+
+            # 多輪收集：邊滾動邊收集，直到達到 count 或達到最大輪數
+            max_rounds = 5
+            for round_idx in range(1, max_rounds + 1):
+                print(f"開始第 {round_idx}/{max_rounds} 輪連結收集…")
+                for i, selector in enumerate(link_selectors, 1):
+                    print(f"使用選擇器 {i}/{len(link_selectors)}")
+                    links = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    print(f"  找到 {len(links)} 個連結")
+                    
+                    valid_count = 0
+                    invalid_count = 0
+                    for link in links:
+                        href = link.get_attribute('href')
+                        if not href:
+                            continue
                         # 確保是完整的 URL
                         if href.startswith('/'):
-                            full_url = base_url + href
-                        else:
+                            full_url = base_url.rstrip('/') + href
+                        elif href.startswith('http'):
                             full_url = href
+                        else:
+                            full_url = base_url.rstrip('/') + '/' + href.lstrip('./')
                         
                         # 根據網站類型過濾連結
                         if 'nicklee.tw' in base_url:
-                            # 只收集 nicklee.tw 的文章連結，嚴格過濾外部連結
-                            if self._is_valid_nicklee_url(full_url):
+                            if self._is_valid_nicklee_url(full_url) and full_url not in news_urls:
                                 news_urls.append(full_url)
                                 valid_count += 1
                             else:
                                 invalid_count += 1
-                                # 只顯示被過濾的外部連結作為調試
-                                if 'facebook.com' in full_url or 'twitter.com' in full_url or 'x.com' in full_url:
-                                    print(f"    ❌ 過濾社交媒體連結: {full_url[:60]}...")
                         else:
                             # 只收集 TVBS 的文章連結，排除廣告和其他連結
-                            if self._is_valid_tvbs_url(full_url):
+                            if self._is_valid_tvbs_url(full_url) and full_url not in news_urls:
                                 news_urls.append(full_url)
                                 valid_count += 1
                             else:
                                 invalid_count += 1
-                
-                print(f"  選擇器 {i} 結果: {valid_count} 個有效連結, {invalid_count} 個無效連結")
+                    print(f"  選擇器 {i} 結果: {valid_count} 個有效連結, {invalid_count} 個無效連結")
+
+                # 若已足夠則跳出
+                if len(news_urls) >= count:
+                    break
+
+                # 滾動更多讓頁面載入更多卡片
+                try:
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(2)
+                    self.driver.execute_script("window.scrollBy(0, -200);")
+                    time.sleep(1)
+                except Exception:
+                    pass
             
             # 去除重複的 URL
             news_urls = list(set(news_urls))
             
+            # 後備：若仍不足，掃描所有 a[href] 進行語意過濾，特別針對 /travel/ 與 a.article__item
+            if len(news_urls) < count:
+                try:
+                    print("啟用後備掃描 a[href] ...")
+                    all_links = []
+                    # 以 a.article__item 優先
+                    all_links.extend(self.driver.find_elements(By.CSS_SELECTOR, "a.article__item[href]"))
+                    # 旅行列表連結
+                    all_links.extend(self.driver.find_elements(By.CSS_SELECTOR, "a[href^='/travel/']"))
+                    # 一般備援
+                    all_links.extend(self.driver.find_elements(By.CSS_SELECTOR, "a[href]"))
+                    added = 0
+                    for a in all_links:
+                        href = a.get_attribute('href')
+                        if not href:
+                            continue
+                        # 相對路徑轉完整
+                        if href.startswith('/'):
+                            full_url = base_url.rstrip('/') + href
+                        elif href.startswith('http'):
+                            full_url = href
+                        else:
+                            full_url = base_url.rstrip('/') + '/' + href.lstrip('./')
+                        # 僅保留 TVBS 域名且為文章/旅遊/生活頁面
+                        if self._is_valid_tvbs_url(full_url) and full_url not in news_urls:
+                            news_urls.append(full_url)
+                            added += 1
+                    print(f"後備掃描新增 {added} 筆")
+                except Exception as e:
+                    print(f"後備掃描失敗: {e}")
+
+            # 再次去重
+            news_urls = list(dict.fromkeys(news_urls))
+
             print(f"找到 {len(news_urls)} 個新聞連結")
             if news_urls:
                 selected_urls = random.sample(news_urls, min(count, len(news_urls)))
@@ -673,41 +763,41 @@ class TvbsAdReplacer:
             "dots": {
                 "close_button": {
                     "html": '⋮',  # 使用 Unicode 字符代替 SVG
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
+                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 },
                 "info_button": {
                     "html": 'ⓘ',  # 使用 Unicode 字符代替 SVG
-                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
+                    "style": 'position:absolute;top:1px;right:18px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 }
             },
             "cross": {
                 "close_button": {
                     "html": '✕',  # 使用 Unicode 字符代替 SVG
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
+                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 },
                 "info_button": {
                     "html": 'ⓘ',  # 使用 Unicode 字符代替 SVG
-                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
+                    "style": 'position:absolute;top:1px;right:18px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 }
             },
             "adchoices": {
                 "close_button": {
                     "html": '✕',  # 使用 Unicode 字符代替 SVG
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
+                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "style": 'position:absolute;top:1px;right:18px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
                 }
             },
             "adchoices_dots": {
                 "close_button": {
                     "html": '⋮',  # 使用 Unicode 字符代替 SVG
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
+                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;text-align:center;line-height:15px;font-size:12px;color:#00aecd;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "style": 'position:absolute;top:1px;right:18px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
                 }
             },
             "none": {
@@ -1288,10 +1378,28 @@ def main():
     bot = TvbsAdReplacer(headless=False, screen_id=screen_id)
     
     try:
-        # 尋找新聞連結 - 可以選擇不同的網站
-        # 使用 NICKLEE_BASE_URL 來處理 nicklee.tw 網站
-        # 或使用 TVBS_BASE_URL 來處理 TVBS 食尚玩家網站
-        news_urls = bot.get_random_news_urls(NICKLEE_BASE_URL, NEWS_COUNT)
+        # 尋找新聞連結 - 指定 TVBS 分類起始頁（旅行 / 亞洲）
+        start_pages = [
+            f"{TVBS_BASE_URL.rstrip('/')}/travel",
+            f"{TVBS_BASE_URL.rstrip('/')}/asia",
+        ]
+
+        news_urls = []
+        for idx, start_url in enumerate(start_pages, 1):
+            print(f"起始頁 {idx}/{len(start_pages)}: {start_url}")
+            urls = bot.get_random_news_urls(start_url, NEWS_COUNT)
+            if urls:
+                news_urls.extend(urls)
+            # 去重
+            news_urls = list(dict.fromkeys(news_urls))
+            # 已達需求數量則停止
+            if len(news_urls) >= NEWS_COUNT:
+                break
+
+        # 最後防呆：若仍沒有任何連結，退回主站
+        if not news_urls:
+            print("⚠️ 分類頁未取得連結，退回主站嘗試一次…")
+            news_urls = bot.get_random_news_urls(TVBS_BASE_URL, NEWS_COUNT)
         
         if not news_urls:
             print("無法獲取新聞連結")

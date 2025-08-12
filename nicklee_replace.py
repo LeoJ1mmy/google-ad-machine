@@ -142,6 +142,74 @@ class ScreenManager:
                                 'resolution': 'Unknown',
                                 'primary': i == 1
                             })
+            elif system == "Windows":
+                # Windows 多種方法偵測螢幕
+                try:
+                    # 方法1: 使用 PowerShell 取得所有螢幕資訊
+                    powershell_cmd = '''
+                    Add-Type -AssemblyName System.Windows.Forms
+                    [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+                        Write-Output "$( $_.Bounds.Width )x$( $_.Bounds.Height ):$( $_.Primary )"
+                    }
+                    '''
+                    result = subprocess.run(['powershell', '-Command', powershell_cmd], 
+                                             capture_output=True, text=True)
+                    if result.returncode == 0:
+                        lines = [l for l in result.stdout.strip().split('\n') if l.strip()]
+                        screen_id = 1
+                        for line in lines:
+                            if 'x' in line and ':' in line:
+                                try:
+                                    resolution, is_primary = line.strip().split(':')
+                                    screens.append({
+                                        'id': screen_id,
+                                        'resolution': resolution,
+                                        'primary': is_primary.lower() == 'true'
+                                    })
+                                    screen_id += 1
+                                except Exception:
+                                    continue
+                except Exception as e:
+                    print(f"PowerShell 方法失敗: {e}")
+                
+                # 方法2: 如果 PowerShell 失敗，使用 wmic (較舊環境)
+                if not screens:
+                    try:
+                        cmd = 'wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution /format:csv'
+                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                        if result.returncode == 0:
+                            lines = [l for l in result.stdout.strip().split('\n') if l.strip()]
+                            screen_id = 1
+                            for line in lines[1:]:  # 跳過標題行
+                                parts = line.split(',')
+                                if len(parts) >= 3:
+                                    width = parts[1].strip()
+                                    height = parts[2].strip()
+                                    if width and height and width != 'NULL' and width.isdigit():
+                                        screens.append({
+                                            'id': screen_id,
+                                            'resolution': f"{width}x{height}",
+                                            'primary': screen_id == 1
+                                        })
+                                        screen_id += 1
+                    except Exception as e:
+                        print(f"wmic 方法失敗: {e}")
+                
+                # 方法3: 再退回使用 tkinter
+                if not screens:
+                    try:
+                        import tkinter as tk
+                        root = tk.Tk()
+                        width = root.winfo_screenwidth()
+                        height = root.winfo_screenheight()
+                        screens.append({
+                            'id': 1,
+                            'resolution': f"{width}x{height}",
+                            'primary': True
+                        })
+                        root.destroy()
+                    except Exception as e:
+                        print(f"tkinter 方法失敗: {e}")
             
             # 如果無法偵測到螢幕，至少返回一個預設螢幕
             if not screens:
@@ -1091,6 +1159,51 @@ class NickleeAdReplacer:
                     self.driver.save_screenshot(filepath)
                     print(f"截圖保存: {filepath}")
                     return filepath
+            elif system == "Windows":
+                # Windows 多螢幕截圖 - 優先使用 MSS
+                try:
+                    import mss
+                    with mss.mss() as sct:
+                        monitors = sct.monitors
+                        print(f"MSS 偵測到 {len(monitors)-1} 個螢幕: {monitors}")
+                        # MSS monitors[0] 是所有螢幕的組合，實際螢幕從 monitors[1] 開始
+                        if 0 < self.screen_id < len(monitors):
+                            monitor = monitors[self.screen_id]
+                        else:
+                            monitor = monitors[1]
+                            print(f"⚠️ 螢幕 {self.screen_id} 超出範圍，使用主螢幕")
+                        screenshot_mss = sct.grab(monitor)
+                        from PIL import Image
+                        screenshot = Image.frombytes('RGB', screenshot_mss.size, screenshot_mss.bgra, 'raw', 'BGRX')
+                        screenshot.save(filepath)
+                        print(f"✅ MSS 截圖保存 (螢幕 {self.screen_id}): {filepath}")
+                        return filepath
+                except ImportError:
+                    print("❌ MSS 未安裝，使用 pyautogui 備用方案")
+                    try:
+                        import pyautogui
+                        screenshot = pyautogui.screenshot()
+                        screenshot.save(filepath)
+                        print(f"✅ pyautogui 截圖保存: {filepath}")
+                        return filepath
+                    except Exception:
+                        print("pyautogui 也失敗，使用 Selenium 截圖")
+                        self.driver.save_screenshot(filepath)
+                        print(f"截圖保存: {filepath}")
+                        return filepath
+                except Exception as e:
+                    print(f"❌ MSS 截圖失敗: {e}")
+                    try:
+                        import pyautogui
+                        screenshot = pyautogui.screenshot()
+                        screenshot.save(filepath)
+                        print(f"✅ pyautogui 截圖保存: {filepath}")
+                        return filepath
+                    except Exception:
+                        print("pyautogui 也失敗，使用 Selenium 截圖")
+                        self.driver.save_screenshot(filepath)
+                        print(f"截圖保存: {filepath}")
+                        return filepath
             else:
                 # 其他系統使用 Selenium 截圖
                 self.driver.save_screenshot(filepath)
