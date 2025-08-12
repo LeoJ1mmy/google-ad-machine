@@ -501,6 +501,13 @@ class NickleeAdReplacer:
                                 var widthMatch = Math.abs(width - targetWidth) <= 2;
                                 var heightMatch = Math.abs(height - targetHeight) <= 2;
                                 var sizeMatch = widthMatch && heightMatch;
+                                // 非 ins 元素放寬至 ±5px（避免影響右側/下方 <ins> 判斷）
+                                if (!sizeMatch) {
+                                    var looseMatch = (tagName !== 'ins') && (Math.abs(width - targetWidth) <= 5) && (Math.abs(height - targetHeight) <= 5);
+                                    if (!looseMatch) {
+                                        return null;
+                                    }
+                                }
                                 
                                 if (!visible || !sizeMatch) {
                                     return null;
@@ -659,6 +666,19 @@ class NickleeAdReplacer:
     def replace_ad_content(self, element, image_data, target_width, target_height):
         """替換廣告內容"""
         try:
+            # 取得元素 tag 與 class 以決定尺寸容差策略
+            try:
+                tag_and_class = self.driver.execute_script("""
+                    var el = arguments[0];
+                    return {
+                        tag: (el && el.tagName) ? el.tagName.toLowerCase() : '',
+                        className: (el && el.className) ? (el.className.toString()) : ''
+                    };
+                """, element)
+            except Exception:
+                tag_and_class = {'tag': '', 'className': ''}
+            is_ins_like = (tag_and_class.get('tag') == 'ins') or ('adsbygoogle' in (tag_and_class.get('className') or '').lower())
+
             # 獲取原始尺寸
             original_info = self.driver.execute_script("""
                 var element = arguments[0];
@@ -670,10 +690,13 @@ class NickleeAdReplacer:
             if not original_info:
                 return False
             
-            # 檢查是否符合目標尺寸
-            if (original_info['width'] != target_width or 
-                original_info['height'] != target_height):
-                return False
+            # 檢查是否符合目標尺寸（<ins> 保持嚴格，其餘放寬 ±5px）
+            if is_ins_like:
+                if (original_info['width'] != target_width or original_info['height'] != target_height):
+                    return False
+            else:
+                if (abs(original_info['width'] - target_width) > 5 or abs(original_info['height'] - target_height) > 5):
+                    return False
             
             # 獲取按鈕樣式
             button_style = self.get_button_style()
