@@ -40,17 +40,12 @@ LINSHIBI_TARGET_AD_SIZES = [
 
 ## 🚀 使用方法
 
-### 1. 執行正式版本（推薦）
-```bash
-python linshibi_test.py
-```
-
-### 2. 執行舊版本
+### 1. 手動執行程式
 ```bash
 python linshibi_replace.py
 ```
 
-### 3. 程式會自動：
+### 2. 程式會自動：
 - 偵測可用螢幕並讓你選擇
 - 搜尋 Linshibi.com 文章（按順序獲取）
 - 掃描多種廣告尺寸（970x90, 728x90, 300x250, 160x600 等）
