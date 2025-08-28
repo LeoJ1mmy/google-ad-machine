@@ -158,8 +158,7 @@ LINSHIBI_TARGET_AD_SIZES = [
 
 ## 📁 檔案說明
 
-- `linshibi_test.py` - **正式版本**（推薦使用）
-- `linshibi_replace.py` - 舊版本
+- `linshibi_replace.py` - 主程式
 - `config.py` - 設定檔
 - `replace_image/` - 替換圖片資料夾
 - `screenshots/` - 截圖輸出資料夾
