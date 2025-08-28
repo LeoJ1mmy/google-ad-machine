@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+通用模板
+"""
+
 import time
 import os
 import base64
@@ -25,22 +29,16 @@ except ImportError:
     # 預設設定
     SCREENSHOT_COUNT = 10
     MAX_ATTEMPTS = 50
-    PAGE_LOAD_TIMEOUT = 30
+    PAGE_LOAD_TIMEOUT = 15
     WAIT_TIME = 3
     REPLACE_IMAGE_FOLDER = "replace_image"
     DEFAULT_IMAGE = "mini.jpg"
     MINI_IMAGE = "mini.jpg"
-    BASE_URL = "https://tw.news.yahoo.com/fun/"
+    BASE_URL = "https://example.com"  # TODO: 修改為目標網站網址
+    
     NEWS_COUNT = 20
     TARGET_AD_SIZES = [{"width": 970, "height": 90}, {"width": 986, "height": 106}]
     IMAGE_USAGE_COUNT = {"google_970x90.jpg": 5, "google_986x106.jpg": 3}
-    YAHOO_TARGET_AD_SIZES = [
-        {"width": 970, "height": 90},
-        {"width": 728, "height": 90},
-        {"width": 300, "height": 250},
-        {"width": 320, "height": 50},
-        {"width": 336, "height": 280}
-    ]
     MAX_CONSECUTIVE_FAILURES = 10
     CLOSE_BUTTON_SIZE = {"width": 15, "height": 15}
     INFO_BUTTON_SIZE = {"width": 15, "height": 15}
@@ -100,71 +98,117 @@ class ScreenManager:
             elif system == "Windows":
                 # Windows 多種方法偵測螢幕
                 try:
-                    # 方法1: 使用 PowerShell 獲取螢幕資訊
-                    powershell_cmd = '''
-                    Add-Type -AssemblyName System.Windows.Forms
-                    [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
-                        Write-Output "$($_.Bounds.Width)x$($_.Bounds.Height):$($_.Primary)"
-                    }
-                    '''
-                    result = subprocess.run(['powershell', '-Command', powershell_cmd], 
-                                          capture_output=True, text=True)
+                    # 方法1: 使用 wmic path Win32_VideoController
+                    cmd = 'wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution /format:csv'
+                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
                     
                     if result.returncode == 0:
                         lines = result.stdout.strip().split('\n')
                         screen_id = 1
-                        for line in lines:
-                            if 'x' in line and ':' in line:
-                                resolution, is_primary = line.strip().split(':')
-                                screens.append({
-                                    'id': screen_id,
-                                    'resolution': resolution,
-                                    'primary': is_primary.lower() == 'true'
-                                })
-                                screen_id += 1
+                        for line in lines[1:]:  # 跳過標題行
+                            if line.strip() and ',' in line:
+                                parts = line.split(',')
+                                if len(parts) >= 3:
+                                    width = parts[1].strip()
+                                    height = parts[2].strip()
+                                    if width and height and width != 'NULL' and width.isdigit():
+                                        screens.append({
+                                            'id': screen_id,
+                                            'resolution': f"{width}x{height}",
+                                            'primary': screen_id == 1
+                                        })
+                                        screen_id += 1
                 except Exception as e:
-                    print(f"PowerShell 方法失敗: {e}")
+                    print(f"方法1失敗: {e}")
                 
-                # 方法2: 如果 PowerShell 失敗，使用 wmic
+                # 方法2: 如果方法1失敗，使用 PowerShell
                 if not screens:
                     try:
-                        cmd = 'wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution /format:csv'
-                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                        powershell_cmd = '''
+                        Add-Type -AssemblyName System.Windows.Forms
+                        [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+                            Write-Output "$($_.Bounds.Width)x$($_.Bounds.Height):$($_.Primary)"
+                        }
+                        '''
+                        result = subprocess.run(['powershell', '-Command', powershell_cmd], 
+                                              capture_output=True, text=True)
                         
                         if result.returncode == 0:
                             lines = result.stdout.strip().split('\n')
                             screen_id = 1
-                            for line in lines[1:]:  # 跳過標題行
-                                if line.strip() and ',' in line:
-                                    parts = line.split(',')
-                                    if len(parts) >= 3:
-                                        width = parts[1].strip()
-                                        height = parts[2].strip()
-                                        if width and height and width != 'NULL' and width.isdigit():
-                                            screens.append({
-                                                'id': screen_id,
-                                                'resolution': f"{width}x{height}",
-                                                'primary': screen_id == 1
-                                            })
-                                            screen_id += 1
+                            for line in lines:
+                                if 'x' in line and ':' in line:
+                                    resolution, is_primary = line.strip().split(':')
+                                    screens.append({
+                                        'id': screen_id,
+                                        'resolution': resolution,
+                                        'primary': is_primary.lower() == 'true'
+                                    })
+                                    screen_id += 1
                     except Exception as e:
-                        print(f"wmic 方法失敗: {e}")
+                        print(f"方法2失敗: {e}")
                 
-                # 方法3: 使用 Python 的 tkinter 作為備用
+                # 方法3: 如果前面都失敗，嘗試使用 Python 的 tkinter
                 if not screens:
                     try:
                         import tkinter as tk
                         root = tk.Tk()
+                        
+                        # 獲取主螢幕資訊
                         width = root.winfo_screenwidth()
                         height = root.winfo_screenheight()
+                        
                         screens.append({
                             'id': 1,
                             'resolution': f"{width}x{height}",
                             'primary': True
                         })
+                        
+                        # 嘗試獲取多螢幕資訊
+                        try:
+                            # 這個方法可能不適用於所有 Windows 版本
+                            screen_count = root.tk.call('tk', 'scaling')
+                            if screen_count and screen_count > 1:
+                                for i in range(2, int(screen_count) + 1):
+                                    screens.append({
+                                        'id': i,
+                                        'resolution': f"{width}x{height}",
+                                        'primary': False
+                                    })
+                        except:
+                            pass
+                        
                         root.destroy()
                     except Exception as e:
-                        print(f"tkinter 方法失敗: {e}")
+                        print(f"方法3失敗: {e}")
+                
+                # 方法4: 最後的備用方案，使用 pyautogui (如果可用)
+                if not screens:
+                    try:
+                        import pyautogui
+                        width, height = pyautogui.size()
+                        screens.append({
+                            'id': 1,
+                            'resolution': f"{width}x{height}",
+                            'primary': True
+                        })
+                        
+                        # pyautogui 沒有直接的多螢幕支援，但我們可以嘗試檢測
+                        # 通過嘗試不同的座標來推測是否有多螢幕
+                        try:
+                            # 嘗試在主螢幕右側檢測
+                            test_x = width + 100
+                            test_y = 100
+                            # 這裡我們假設如果能在主螢幕外截圖，就有第二個螢幕
+                            # 但 pyautogui 的 screenshot 不支援這種檢測，所以這只是一個佔位符
+                            pass
+                        except:
+                            pass
+                            
+                    except ImportError:
+                        print("pyautogui 未安裝")
+                    except Exception as e:
+                        print(f"方法4失敗: {e}")
                 
             else:  # Linux
                 # Linux 使用 xrandr
@@ -257,7 +301,7 @@ class ScreenManager:
                 return screen
         return None
 
-class YahooAdReplacer:
+class WebsiteAdReplacer:
     def __init__(self, headless=False, screen_id=1):
         self.screen_id = screen_id
         self.setup_driver(headless)
@@ -269,48 +313,77 @@ class YahooAdReplacer:
             chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--ignore-ssl-errors')
-        chrome_options.add_argument('--ignore-certificate-errors')
-        chrome_options.add_argument('--disable-web-security')
-        chrome_options.add_argument('--allow-running-insecure-content')
         
-        # 多螢幕支援 - 計算螢幕偏移量
-        if self.screen_id > 1:
-            screen_offset = (self.screen_id - 1) * 1920
-            chrome_options.add_argument(f'--window-position={screen_offset},0')
+        # 根據作業系統設定螢幕位置
+        system = platform.system()
         
-        # 默認全螢幕設定
-        chrome_options.add_argument('--start-maximized')
-        if not headless:
-            chrome_options.add_argument('--start-fullscreen')
+        if system == "Darwin":  # macOS
+            # macOS 多螢幕支援
+            if self.screen_id > 1:
+                # 計算螢幕偏移量 (假設每個螢幕寬度為1920px)
+                screen_offset = (self.screen_id - 1) * 1920
+                chrome_options.add_argument(f'--window-position={screen_offset},0')
+            
+        elif system == "Windows":
+            # Windows 多螢幕支援
+            if self.screen_id > 1:
+                screen_offset = (self.screen_id - 1) * 1920
+                chrome_options.add_argument(f'--window-position={screen_offset},0')
+        
+        if FULLSCREEN_MODE:
+            chrome_options.add_argument('--start-maximized')
+            if not headless:
+                chrome_options.add_argument('--start-fullscreen')
         
         self.driver = webdriver.Chrome(options=chrome_options)
         
-        # 確保瀏覽器在正確的螢幕上並全螢幕
+        # 確保瀏覽器在正確的螢幕上
         if not headless:
             self.move_to_screen()
     
     def move_to_screen(self):
-        """將瀏覽器移動到指定螢幕並設為全螢幕"""
+        """將瀏覽器移動到指定螢幕"""
         try:
-            # 多螢幕位置調整
-            if self.screen_id > 1:
-                screen_offset = (self.screen_id - 1) * 1920
-                self.driver.set_window_position(screen_offset, 0)
+            system = platform.system()
             
-            # 等待視窗移動完成後設為全螢幕
-            time.sleep(1)
-            self.driver.fullscreen_window()
-            print(f"✅ Chrome 已移動到螢幕 {self.screen_id} 並設為全螢幕")
+            if system == "Darwin":  # macOS
+                # 使用 AppleScript 移動 Chrome 到指定螢幕
+                applescript = f'''
+                tell application "Google Chrome"
+                    activate
+                    set bounds of front window to {{0, 0, 1920, 1080}}
+                end tell
+                '''
+                
+                if self.screen_id > 1:
+                    # 計算螢幕偏移
+                    screen_offset = (self.screen_id - 1) * 1920
+                    applescript = f'''
+                    tell application "Google Chrome"
+                        activate
+                        set bounds of front window to {{{screen_offset}, 0, {screen_offset + 1920}, 1080}}
+                    end tell
+                    '''
+                
+                subprocess.run(['osascript', '-e', applescript], 
+                             capture_output=True, text=True)
+                
+            elif system == "Windows":
+                # Windows 使用 Selenium 的視窗管理
+                if self.screen_id > 1:
+                    screen_offset = (self.screen_id - 1) * 1920
+                    self.driver.set_window_position(screen_offset, 0)
+                    
+            # 確保全螢幕模式
+            if FULLSCREEN_MODE:
+                time.sleep(1)  # 等待視窗移動完成
+                self.driver.fullscreen_window()
+                
+            print(f"✅ Chrome 已移動到螢幕 {self.screen_id}")
             
         except Exception as e:
             print(f"移動瀏覽器到螢幕 {self.screen_id} 失敗: {e}")
-            # 即使移動失敗，也嘗試設為全螢幕
-            try:
-                self.driver.fullscreen_window()
-                print("✅ 已設為全螢幕模式")
-            except:
-                print("將使用預設螢幕位置")
+            print("將使用預設螢幕位置")
     
     def load_replace_images(self):
         """載入替換圖片並解析尺寸"""
@@ -356,42 +429,150 @@ class YahooAdReplacer:
         with open(image_path, 'rb') as f:
             return base64.b64encode(f.read()).decode('utf-8')
     
+    def debug_page_ads(self):
+        """調試方法：顯示頁面上所有可能的廣告元素"""
+        print("\n=== 調試：頁面廣告元素分析 ===")
+        
+        ad_info = self.driver.execute_script("""
+            var adInfo = {
+                adsbygoogle: [],
+                iframes: [],
+                divs_with_ad_keywords: [],
+                all_sizes: []
+            };
+            
+            // 檢查 adsbygoogle
+            var adsbygoogle = document.querySelectorAll('ins.adsbygoogle');
+            for (var i = 0; i < adsbygoogle.length; i++) {
+                var rect = adsbygoogle[i].getBoundingClientRect();
+                adInfo.adsbygoogle.push({
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height),
+                    style: adsbygoogle[i].getAttribute('style') || '',
+                    'data-ad-client': adsbygoogle[i].getAttribute('data-ad-client') || '',
+                    'data-ad-slot': adsbygoogle[i].getAttribute('data-ad-slot') || ''
+                });
+            }
+            
+            // 檢查 iframe
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                var iframe = iframes[i];
+                var rect = iframe.getBoundingClientRect();
+                if (rect.width > 100 && rect.height > 50) { // 過濾太小的 iframe
+                    adInfo.iframes.push({
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height),
+                        src: iframe.src || '',
+                        id: iframe.id || ''
+                    });
+                }
+            }
+            
+            // 檢查包含廣告關鍵字的 div
+            var divs = document.querySelectorAll('div');
+            for (var i = 0; i < divs.length; i++) {
+                var div = divs[i];
+                var className = div.className || '';
+                var id = div.id || '';
+                var hasAdKeyword = ['ad', 'advertisement', 'banner', 'google', 'ads'].some(function(keyword) {
+                    return className.toLowerCase().includes(keyword) || id.toLowerCase().includes(keyword);
+                });
+                
+                if (hasAdKeyword) {
+                    var rect = div.getBoundingClientRect();
+                    if (rect.width > 100 && rect.height > 50) {
+                        adInfo.divs_with_ad_keywords.push({
+                            width: Math.round(rect.width),
+                            height: Math.round(rect.height),
+                            className: className,
+                            id: id
+                        });
+                    }
+                }
+            }
+            
+            // 收集所有常見的廣告尺寸
+            var commonAdSizes = [
+                {w: 970, h: 90}, {w: 728, h: 90}, {w: 300, h: 250},
+                {w: 336, h: 280}, {w: 320, h: 50}, {w: 160, h: 600},
+                {w: 300, h: 600}, {w: 970, h: 250}
+            ];
+            
+            var allElements = document.querySelectorAll('*');
+            for (var i = 0; i < allElements.length; i++) {
+                var element = allElements[i];
+                var rect = element.getBoundingClientRect();
+                var width = Math.round(rect.width);
+                var height = Math.round(rect.height);
+                
+                for (var j = 0; j < commonAdSizes.length; j++) {
+                    var adSize = commonAdSizes[j];
+                    if (Math.abs(width - adSize.w) <= 5 && Math.abs(height - adSize.h) <= 5) {
+                        adInfo.all_sizes.push({
+                            width: width,
+                            height: height,
+                            tagName: element.tagName,
+                            className: element.className || '',
+                            id: element.id || ''
+                        });
+                    }
+                }
+            }
+            
+            return adInfo;
+        """)
+        
+        print(f"AdsByGoogle 元素: {len(ad_info['adsbygoogle'])} 個")
+        for ad in ad_info['adsbygoogle']:
+            print(f"  - {ad['width']}x{ad['height']} (client: {ad['data-ad-client']}, slot: {ad['data-ad-slot']})")
+        
+        print(f"Iframe 元素: {len(ad_info['iframes'])} 個")
+        for iframe in ad_info['iframes']:
+            print(f"  - {iframe['width']}x{iframe['height']} (id: {iframe['id']}, src: {iframe['src'][:50]}...)")
+        
+        print(f"包含廣告關鍵字的 Div: {len(ad_info['divs_with_ad_keywords'])} 個")
+        for div in ad_info['divs_with_ad_keywords']:
+            print(f"  - {div['width']}x{div['height']} (class: {div['className']}, id: {div['id']})")
+        
+        print(f"符合常見廣告尺寸的元素: {len(ad_info['all_sizes'])} 個")
+        for element in ad_info['all_sizes']:
+            print(f"  - {element['width']}x{element['height']} <{element['tagName']}> (class: {element['className']}, id: {element['id']})")
+        
+        print("=== 調試結束 ===\n")
+    
     def get_random_news_urls(self, base_url, count=5):
+        """
+        獲取新聞/文章連結 - 需要根據目標網站結構修改
+        
+        這個方法需要根據目標網站的具體結構進行客製化：
+        1. 修改 link_selectors 中的 CSS 選擇器
+        2. 更新域名檢查邏輯
+        3. 根據需要添加額外的過濾條件
+        
+        常見的文章連結模式：
+        - 部落格: a[href*='/blog/'], a[href*='/post/']
+        - 新聞: a[href*='/news/'], a[href*='/article/']
+        - 旅遊: a[href*='/travel/'], a[href*='/tour/']
+        - 美食: a[href*='/food/'], a[href*='/restaurant/']
+        """
         try:
-            print(f"正在訪問: {base_url}")
+            print(f"正在訪問首頁: {base_url}")
             self.driver.get(base_url)
             time.sleep(WAIT_TIME)
             
-            # 檢查當前頁面 URL
-            current_url = self.driver.current_url
-            print(f"實際頁面 URL: {current_url}")
-            
-            # 檢查頁面標題
-            page_title = self.driver.title
-            print(f"頁面標題: {page_title}")
-            
-            # Yahoo 新聞娛樂版面的連結選擇器 - 針對特定結構
+            # TODO: 根據目標網站修改這些選擇器
             link_selectors = [
-                # 針對您提供的 HTML 結構的選擇器 - 優先尋找具體的新聞文章
-                "h3 a[href*='.html']",                            # 新聞標題連結（最優先）
-                "h2 a[href*='.html']",                            # 二級標題連結
-                "h1 a[href*='.html']",                            # 一級標題連結
-                "a[href*='.html']",                               # 所有 HTML 文章連結
-                "a[href*='story'][href*='.html']",                # 故事連結
-                "a[href*='article'][href*='.html']",              # 文章連結
-                "a[href*='news'][href*='.html']",                 # 新聞連結
-                "a[href*='-'][href*='.html']",                    # 包含連字符的連結（通常是新聞標題）
-                # 備用選擇器
-                "ul li a[href*='.html']",                         # 列表中的新聞連結
-                "li a[href*='.html']",                            # 列表項目的連結
-                "div a[href*='.html']",                           # 區塊中的連結
-                # 最後的備用選擇器
-                "a[href*='tw.news.yahoo.com'][href*='.html']",    # 所有 Yahoo 新聞連結
-                "a[data-ylk*='news'][href*='.html']",             # Yahoo 新聞連結
-                # 調試選擇器
-                "a",                                               # 所有連結（調試用）
-                "h3 a",                                           # 所有 h3 中的連結
-                "a[href*='/']",                                   # 所有以 / 開頭的連結
+                "a[href*='/article/']",  # 一般文章連結
+                "a[href*='/news/']",     # 新聞連結
+                "a[href*='/blog/']",     # 部落格連結
+                "a[href*='/post/']",     # 貼文連結
+                "a[href*='/tour/']",     # 旅遊連結
+                "a[href*='/travel/']",   # 旅行連結
+                "a[href*='/activity/']", # 活動連結
+                "a[href*='/food/']",     # 美食連結
+                # 添加更多網站特定的選擇器
+                # 例如: "a.article-link", ".news-item a", etc.
             ]
             
             news_urls = []
@@ -400,104 +581,119 @@ class YahooAdReplacer:
                 try:
                     links = self.driver.find_elements(By.CSS_SELECTOR, selector)
                     print(f"使用選擇器 '{selector}' 找到 {len(links)} 個連結")
+                    
                     for link in links:
                         href = link.get_attribute('href')
-                        print(f"  連結: {href}")
-                        if href and href not in news_urls and '.html' in href:
-                            # 檢查是否為有效的 Yahoo 新聞文章連結
-                            is_valid_news = any(keyword in href.lower() for keyword in [
-                                'tw.news.yahoo.com', '.html', 'story', 'article', 'news'
+                        if href and href not in news_urls:
+                            # TODO: 修改域名檢查 - 將 'example.com' 改為目標網站域名
+                            domain_check = any(domain in href for domain in [
+                                'example.com',  # 主域名
+                                # 添加其他可能的域名變體
                             ])
                             
-                            # 排除明顯的非新聞連結
-                            is_not_news = any(exclude in href.lower() for exclude in [
-                                '/mail/', '/shopping/', '/auction/', '/finance/', '/sports/', '/politics/', '/international/', '/society/', '/health/', '/taste/', '/weather/', '/archive/', '/most-popular/', '/topic/',
-                                'login', 'signin', 'register', 'account', 'profile', 'settings', 'help', 'about', 'contact', 'privacy', 'terms'
-                            ])
-                            
-                            # 確保是具體的新聞文章而不是分類頁面
-                            is_article_page = '.html' in href and not href.endswith('/') and not href.endswith('/tourist-spots')
-                            
-                            # 接受所有有效的 Yahoo 新聞文章連結
-                            if is_valid_news and not is_not_news and is_article_page:
-                                # 如果是相對路徑，轉換為完整 URL
-                                if href.startswith('/'):
-                                    full_url = 'https://tw.news.yahoo.com' + href
-                                else:
-                                    full_url = href
-                                news_urls.append(full_url)
-                                print(f"找到娛樂新聞文章連結: {full_url}")
+                            if domain_check and href != base_url:
+                                news_urls.append(href)
+                                
                 except Exception as e:
-                    print(f"使用選擇器 {selector} 尋找連結失敗: {e}")
+                    print(f"處理選擇器 '{selector}' 時發生錯誤: {e}")
                     continue
             
-            # 如果沒有找到足夠的連結，嘗試從主頁面獲取
-            if len(news_urls) < NEWS_COUNT:
-                print(f"只找到 {len(news_urls)} 個連結，嘗試從主頁面獲取更多...")
-                try:
-                    # 檢查是否仍在熱門景點版面
-                    current_url = self.driver.current_url
-                    if '/tourist-spots' not in current_url:
-                        print(f"警告：頁面已離開熱門景點版面，當前 URL: {current_url}")
-                        # 重新導航到熱門景點版面
-                        self.driver.get(base_url)
-                        time.sleep(WAIT_TIME)
-                    
-                    # 使用更寬鬆的選擇器來獲取更多連結
-                    additional_selectors = [
-                        "h3 a[href*='.html']",                            # 新聞標題連結
-                        "h2 a[href*='.html']",                            # 二級標題連結
-                        "h1 a[href*='.html']",                            # 一級標題連結
-                        "a[href*='.html'][href*='tw.news.yahoo.com']",    # HTML 文章連結
-                        "a[href*='story'][href*='.html']",                # 故事連結
-                        "a[href*='article'][href*='.html']",              # 文章連結
-                        "a[href*='news'][href*='.html']",                 # 新聞連結
-                        "a[href*='-'][href*='.html']",                    # 包含連字符的連結
-                        "ul li a[href*='.html']",                         # 列表中的新聞連結
-                        "li a[href*='.html']",                            # 列表項目的連結
-                        "div a[href*='.html']",                           # 區塊中的連結
-                        "a[href*='tw.news.yahoo.com'][href*='.html']",    # 所有 Yahoo 新聞連結
-                        "a[data-ylk*='news'][href*='.html']"              # Yahoo 新聞連結
-                    ]
-                    
-                    for selector in additional_selectors:
-                        try:
-                            links = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                            for link in links:
-                                href = link.get_attribute('href')
-                                if href and href not in news_urls and '.html' in href:
-                                    # 檢查是否為有效的 Yahoo 新聞文章連結
-                                    is_valid_news = any(keyword in href.lower() for keyword in [
-                                        'tw.news.yahoo.com', '.html', 'story', 'article', 'news'
-                                    ])
-                                    
-                                    # 排除明顯的非新聞連結
-                                    is_not_news = any(exclude in href.lower() for exclude in [
-                                        '/mail/', '/shopping/', '/auction/', '/finance/', '/sports/', '/politics/', '/international/', '/society/', '/health/', '/taste/', '/weather/', '/archive/', '/most-popular/', '/topic/',
-                                        'login', 'signin', 'register', 'account', 'profile', 'settings', 'help', 'about', 'contact', 'privacy', 'terms'
-                                    ])
-                                    
-                                    # 確保是具體的新聞文章而不是分類頁面
-                                    is_article_page = '.html' in href and not href.endswith('/') and not href.endswith('/tourist-spots')
-                                    
-                                    # 接受所有有效的 Yahoo 新聞文章連結
-                                    if is_valid_news and not is_not_news and is_article_page:
-                                        # 如果是相對路徑，轉換為完整 URL
-                                        if href.startswith('/'):
-                                            full_url = 'https://tw.news.yahoo.com' + href
-                                        else:
-                                            full_url = href
-                                        news_urls.append(full_url)
-                                        print(f"找到娛樂新聞文章連結: {full_url}")
-                        except Exception as e:
-                            continue
-                except Exception as e:
-                    print(f"獲取額外連結失敗: {e}")
-                        
-            return random.sample(news_urls, min(NEWS_COUNT, len(news_urls)))
+            print(f"總共找到 {len(news_urls)} 個有效連結")
+            
+            # 隨機選擇指定數量的連結
+            if len(news_urls) > count:
+                selected_urls = random.sample(news_urls, count)
+            else:
+                selected_urls = news_urls
+                
+            print(f"選擇了 {len(selected_urls)} 個連結進行處理")
+            return selected_urls
+            
         except Exception as e:
             print(f"獲取新聞連結失敗: {e}")
             return []
+    
+    def remove_fullscreen_ads(self):
+        """移除佔據整個畫面的廣告"""
+        try:
+            print("檢查並移除全螢幕廣告...")
+            
+            # 移除常見的全螢幕廣告元素
+            removed_count = self.driver.execute_script("""
+                var removedCount = 0;
+                
+                // 常見的全螢幕廣告選擇器
+                var fullscreenAdSelectors = [
+                    // 覆蓋整個螢幕的元素
+                    'div[style*="position: fixed"][style*="z-index"]',
+                    'div[style*="position: absolute"][style*="width: 100%"][style*="height: 100%"]',
+                    
+                    // 常見的廣告覆蓋層
+                    '.overlay',
+                    '.modal-overlay',
+                    '.popup-overlay',
+                    '.ad-overlay',
+                    '.interstitial',
+                    
+                    // Google 廣告相關
+                    'div[id*="google_ads_iframe"]',
+                    'ins.adsbygoogle[style*="position: fixed"]',
+                    
+                    // 其他可能的全螢幕廣告
+                    '[class*="fullscreen"]',
+                    '[class*="popup"]',
+                    '[id*="popup"]',
+                    '[class*="modal"][style*="display: block"]'
+                ];
+                
+                fullscreenAdSelectors.forEach(function(selector) {
+                    try {
+                        var elements = document.querySelectorAll(selector);
+                        for (var i = 0; i < elements.length; i++) {
+                            var element = elements[i];
+                            var rect = element.getBoundingClientRect();
+                            var style = window.getComputedStyle(element);
+                            
+                            // 檢查是否為全螢幕或大尺寸元素
+                            var isFullscreen = (
+                                (rect.width >= window.innerWidth * 0.8 && rect.height >= window.innerHeight * 0.8) ||
+                                (style.position === 'fixed' && (
+                                    (style.top === '0px' || style.top === '0') &&
+                                    (style.left === '0px' || style.left === '0') &&
+                                    (rect.width >= window.innerWidth * 0.5 || rect.height >= window.innerHeight * 0.5)
+                                ))
+                            );
+                            
+                            if (isFullscreen && style.display !== 'none') {
+                                console.log('移除全螢幕廣告:', element);
+                                element.style.display = 'none';
+                                element.remove();
+                                removedCount++;
+                            }
+                        }
+                    } catch (e) {
+                        console.log('處理選擇器失敗:', selector, e);
+                    }
+                });
+                
+                // 移除可能阻擋內容的遮罩
+                var body = document.body;
+                if (body.style.overflow === 'hidden') {
+                    body.style.overflow = 'auto';
+                    console.log('恢復頁面滾動');
+                }
+                
+                return removedCount;
+            """)
+            
+            if removed_count > 0:
+                print(f"✅ 成功移除 {removed_count} 個全螢幕廣告")
+                time.sleep(1)  # 等待頁面重新渲染
+            else:
+                print("未發現全螢幕廣告")
+                
+        except Exception as e:
+            print(f"移除全螢幕廣告失敗: {e}")
     
     def scan_entire_page_for_ads(self, target_width, target_height):
         """掃描整個網頁尋找符合尺寸的廣告元素"""
@@ -552,18 +748,36 @@ class YahooAdReplacer:
                     };
                 """, element)
                 
-                # 允許 5 像素的容差範圍
-                tolerance = 5
-                width_match = abs(size_info['width'] - target_width) <= tolerance
-                height_match = abs(size_info['height'] - target_height) <= tolerance
-                
                 if (size_info and 
                     size_info['visible'] and
-                    width_match and 
-                    height_match):
+                    size_info['width'] == target_width and 
+                    size_info['height'] == target_height):
                     
-                    # 完全簡化的廣告檢查 - 只要尺寸符合就認為是廣告
-                    is_ad = True
+                    # 進一步檢查是否可能是廣告（與 ad_replacer.py 一致）
+                    is_ad = self.driver.execute_script("""
+                        var element = arguments[0];
+                        var tagName = element.tagName.toLowerCase();
+                        var className = element.className || '';
+                        var id = element.id || '';
+                        var src = element.src || '';
+                        
+                        // 檢查是否包含廣告相關的關鍵字
+                        var adKeywords = ['ad', 'advertisement', 'banner', 'google', 'ads', 'ad-', '-ad'];
+                        var hasAdKeyword = adKeywords.some(function(keyword) {
+                            return className.toLowerCase().includes(keyword) ||
+                                   id.toLowerCase().includes(keyword) ||
+                                   src.toLowerCase().includes(keyword);
+                        });
+                        
+                        // 檢查是否為圖片、iframe 或 div
+                        var isImageElement = tagName === 'img' || tagName === 'iframe' || tagName === 'div';
+                        
+                        // 檢查是否有背景圖片
+                        var style = window.getComputedStyle(element);
+                        var hasBackgroundImage = style.backgroundImage && style.backgroundImage !== 'none';
+                        
+                        return hasAdKeyword || isImageElement || hasBackgroundImage;
+                    """, element)
                     
                     if is_ad:
                         matching_elements.append({
@@ -572,7 +786,7 @@ class YahooAdReplacer:
                             'height': size_info['height'],
                             'position': f"top:{size_info['top']:.0f}, left:{size_info['left']:.0f}"
                         })
-                        print(f"找到符合尺寸的廣告元素: {size_info['width']}x{size_info['height']} (目標: {target_width}x{target_height}) at {size_info['top']:.0f},{size_info['left']:.0f}")
+                        print(f"找到符合尺寸的廣告元素: {size_info['width']}x{size_info['height']} at {size_info['top']:.0f},{size_info['left']:.0f}")
                 
                 # 每檢查100個元素顯示進度
                 if (i + 1) % 100 == 0:
@@ -585,48 +799,49 @@ class YahooAdReplacer:
         return matching_elements
     
     def get_button_style(self):
-        """根據配置返回按鈕樣式 - 採用 ad_replacer.py 的標準設計"""
+        """根據配置返回按鈕樣式"""
         button_style = getattr(self, 'button_style', BUTTON_STYLE)
         
-        # 統一的資訊按鈕樣式 - 針對 Yahoo 網站優化
+        # 預先定義的按鈕樣式
+        # 統一的資訊按鈕樣式 - 使用 Google 標準設計
         unified_info_button = {
             "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
-            "style": 'position:absolute;top:1px;right:18px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+            "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
         }
         
         button_styles = {
             "dots": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
                 },
                 "info_button": unified_info_button
             },
             "cross": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
                 },
                 "info_button": unified_info_button
             },
             "adchoices": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:1px;right:18px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
                 }
             },
             "adchoices_dots": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:1px;right:18px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
                 }
             },
             "none": {
@@ -656,122 +871,97 @@ class YahooAdReplacer:
             if not original_info:
                 return False
             
-            # 檢查是否符合目標尺寸（允許 5 像素的容差）
-            tolerance = 5
-            width_match = abs(original_info['width'] - target_width) <= tolerance
-            height_match = abs(original_info['height'] - target_height) <= tolerance
-            
-            if not (width_match and height_match):
-                print(f"尺寸不匹配: 實際 {original_info['width']}x{original_info['height']}, 目標 {target_width}x{target_height}")
+            # 檢查是否符合目標尺寸（精確匹配，與 ad_replacer.py 一致）
+            if (original_info['width'] != target_width or 
+                original_info['height'] != target_height):
                 return False
             
             # 獲取按鈕樣式
             button_style = self.get_button_style()
+            close_button_html = button_style["close_button"]["html"]
+            close_button_style = button_style["close_button"]["style"]
+            info_button_html = button_style["info_button"]["html"]
+            info_button_style = button_style["info_button"]["style"]
             
-            # 檢查是否為 "none" 模式
-            current_button_style = getattr(self, 'button_style', BUTTON_STYLE)
-            is_none_mode = current_button_style == "none"
-            
-            if not is_none_mode:
-                close_button_html = button_style["close_button"]["html"]
-                close_button_style = button_style["close_button"]["style"]
-                info_button_html = button_style["info_button"]["html"]
-                info_button_style = button_style["info_button"]["style"]
-            else:
-                close_button_html = ""
-                close_button_style = ""
-                info_button_html = ""
-                info_button_style = ""
-            
-            # 只替換圖片，保留廣告按鈕，確保不影響頁面佈局
+            # 只替換圖片，保留廣告按鈕
             success = self.driver.execute_script("""
-                // 添加 Google 廣告標準樣式，確保不影響頁面佈局
+                // 添加 Google 廣告標準樣式
                 if (!document.getElementById('google_ad_styles')) {
                     var style = document.createElement('style');
                     style.id = 'google_ad_styles';
                     style.textContent = `
-                        /* 只針對我們的廣告容器，不影響其他元素 */
-                        .ad-replacement-container {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            position: relative !important;
-                            display: block !important;
-                            overflow: visible !important;
-                        }
-                        .ad-replacement-container img {
-                            max-width: 100% !important;
-                            height: auto !important;
-                            display: block !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
+                        div {
+                            margin: 0;
+                            padding: 0;
                         }
                         .abgb {
-                            position: absolute !important;
-                            right: 17px !important;
-                            top: 1px !important;
-                            z-index: 1000 !important;
-                            background-color: rgba(255,255,255,1) !important;
+                            position: absolute;
+                            right: 16px;
+                            top: 0px;
                         }
                         .abgb {
-                            display: inline-block !important;
-                            height: 15px !important;
-                            background-color: rgba(255,255,255,1) !important;
+                            display: inline-block;
+                            height: 15px;
                         }
                         .abgc {
-                            cursor: pointer !important;
+                            cursor: pointer;
                         }
                         .abgc {
-                            display: block !important;
-                            height: 15px !important;
-                            position: absolute !important;
-                            right: 1px !important;
-                            top: 1px !important;
-                            text-rendering: geometricPrecision !important;
-                            z-index: 2147483646 !important;
+                            display: block;
+                            height: 15px;
+                            position: absolute;
+                            right: 1px;
+                            top: 1px;
+                            text-rendering: geometricPrecision;
+                            z-index: 2147483646;
                         }
                         .abgc .il-wrap {
-                            background-color: #ffffff !important;
-                            height: 15px !important;
-                            white-space: nowrap !important;
+                            background-color: #ffffff;
+                            height: 15px;
+                            white-space: nowrap;
                         }
                         .abgc .il-icon {
-                            height: 15px !important;
-                            width: 15px !important;
+                            height: 15px;
+                            width: 15px;
                         }
                         .abgc .il-icon svg {
-                            fill: #00aecd !important;
+                            fill: #00aecd;
                         }
                         .abgs svg, .abgb svg {
-                            display: inline-block !important;
-                            height: 15px !important;
-                            width: 15px !important;
-                            vertical-align: top !important;
+                            display: inline-block;
+                            height: 15px;
+                            width: 15px;
+                            vertical-align: top;
                         }
-                        [id^="close_button_"] { 
-                            position: absolute !important; 
-                            top: 1px !important;
-                            right: 1px !important;
-                            width: 15px !important; 
-                            height: 15px !important;
-                            z-index: 1001 !important;
-                            cursor: pointer !important;
-                            display: block !important;
-                            margin: 0 !important; 
-                            padding: 0 !important; 
-                            border: none !important;
-                            background-color: rgba(255,255,255,1) !important;
+                        #close_button { 
+                            text-decoration: none; 
+                            margin: 0; 
+                            padding: 0; 
+                            border: none;
+                            cursor: pointer;
+                            position: absolute; 
+                            z-index: 100; 
+                            top: 0px;
+                            bottom: auto;
+                            vertical-align: top;
+                            margin-top: 1px;
+                            right: 0px;
+                            left: auto;
+                            text-align: right;
+                            margin-right: 1px;
+                            display: block; 
+                            width: 15px; 
+                            height: 15px;
                         }
-                        [id^="close_button_"] [id="close_button_svg"] { 
-                            width: 15px !important; 
-                            height: 15px !important; 
-                            display: block !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
+                        #close_button #close_button_svg { 
+                            width: 15px; 
+                            height: 15px; 
+                            line-height: 0;
                         }
-                        [id^="abgb_"] [id="info_button_svg"] { 
-                            width: 15px !important; 
-                            height: 15px !important; 
-                            line-height: 0 !important;
+                        #abgb #info_button_svg { 
+                            width: 15px; 
+                            height: 15px; 
+                            line-height: 0;
                         }
                     `;
                     document.head.appendChild(style);
@@ -785,7 +975,6 @@ class YahooAdReplacer:
                 var closeButtonStyle = arguments[5];
                 var infoButtonHtml = arguments[6];
                 var infoButtonStyle = arguments[7];
-                var isNoneMode = arguments[8];
                 
                 if (!container) return false;
                 
@@ -798,12 +987,6 @@ class YahooAdReplacer:
                   var old = container.querySelector('#'+id);
                   if(old) old.remove();
                 });
-                
-                // 移除所有舊的按鈕（更徹底的清理）
-                var allCloseButtons = container.querySelectorAll('#close_button');
-                var allInfoButtons = container.querySelectorAll('#abgb');
-                allCloseButtons.forEach(function(btn) { btn.remove(); });
-                allInfoButtons.forEach(function(btn) { btn.remove(); });
                 
                 var replacedCount = 0;
                 var newImageSrc = 'data:image/png;base64,' + imageBase64;
@@ -857,45 +1040,40 @@ class YahooAdReplacer:
                         img.style.outline = 'none';
                         replacedCount++;
                     
-                    // 確保img的父層是relative
-                    var imgParent = img.parentElement || container;
-                    if (window.getComputedStyle(imgParent).position === 'static') {
-                        imgParent.style.position = 'relative';
-                    }
-                    
-                    // 先移除舊的按鈕
-                    ['close_button', 'abgb'].forEach(function(id){
-                        var old = imgParent.querySelector('#'+id);
-                        if(old) old.remove();
-                    });
-                    
-                    // 移除所有舊的按鈕（更徹底的清理）
-                    var allCloseButtons = imgParent.querySelectorAll('#close_button');
-                    var allInfoButtons = imgParent.querySelectorAll('#abgb');
-                    allCloseButtons.forEach(function(btn) { btn.remove(); });
-                    allInfoButtons.forEach(function(btn) { btn.remove(); });
-                    
-                    // 只有在非 none 模式下才創建按鈕
-                    if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                        // 叉叉 - 使用動態樣式
-                        var closeButton = document.createElement('div');
-                        closeButton.id = 'close_button_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                        closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = closeButtonStyle;
+                        // 確保img的父層是relative
+                        var imgParent = img.parentElement || container;
+                        if (window.getComputedStyle(imgParent).position === 'static') {
+                            imgParent.style.position = 'relative';
+                        }
                         
-                        // 驚嘆號 - 使用動態樣式
-                        var abgb = document.createElement('div');
-                        abgb.id = 'abgb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                        abgb.className = 'abgb';
-                        abgb.innerHTML = infoButtonHtml;
-                        abgb.style.cssText = infoButtonStyle;
+                        // 先移除舊的按鈕
+                        ['close_button', 'abgb'].forEach(function(id){
+                            var old = imgParent.querySelector('#'+id);
+                            if(old) old.remove();
+                        });
                         
-                        // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
-                        imgParent.appendChild(abgb);
-                        imgParent.appendChild(closeButton);
+                        // 只有在非 none 模式下才創建按鈕
+                        if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
+                            // 叉叉 - 貼著替換圖片的右上角
+                            var closeButton = document.createElement('div');
+                            closeButton.id = 'close_button';
+                            closeButton.innerHTML = closeButtonHtml;
+                            closeButton.style.cssText = closeButtonStyle;
+                            
+                            // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
+                            var abgb = document.createElement('div');
+                            abgb.id = 'abgb';
+                            abgb.className = 'abgb';
+                            abgb.innerHTML = infoButtonHtml;
+                            abgb.style.cssText = infoButtonStyle;
+                            
+                            // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
+                            imgParent.appendChild(abgb);
+                            imgParent.appendChild(closeButton);
+                        }
                     }
                 }
-                }
+                
                 // 方法2: 處理iframe
                 var iframes = container.querySelectorAll('iframe');
                 for (var i = 0; i < iframes.length; i++) {
@@ -910,7 +1088,7 @@ class YahooAdReplacer:
                         container.style.position = 'relative';
                     }
                     
-                    // 在iframe位置創建新的圖片元素，保持原始佈局
+                    // 在iframe位置創建新的圖片元素
                     var newImg = document.createElement('img');
                     newImg.src = newImageSrc;
                     newImg.style.position = 'absolute';
@@ -920,50 +1098,29 @@ class YahooAdReplacer:
                     newImg.style.height = Math.round(iframeRect.height) + 'px';
                     newImg.style.objectFit = 'contain';
                     newImg.style.zIndex = '1';
-                    newImg.style.maxWidth = 'none';
-                    newImg.style.maxHeight = 'none';
-                    newImg.style.minWidth = 'auto';
-                    newImg.style.minHeight = 'auto';
-                    newImg.style.display = 'block';
-                    newImg.style.margin = '0';
-                    newImg.style.padding = '0';
-                    newImg.style.border = 'none';
-                    newImg.style.outline = 'none';
                     
                     container.appendChild(newImg);
                     
-                                            // 先移除舊的按鈕
-                        ['close_button', 'abgb'].forEach(function(id){
-                            var old = container.querySelector('#'+id);
-                            if(old) old.remove();
-                        });
-                        
-                        // 移除所有舊的按鈕（更徹底的清理）
-                        var allCloseButtons = container.querySelectorAll('#close_button');
-                        var allInfoButtons = container.querySelectorAll('#abgb');
-                        allCloseButtons.forEach(function(btn) { btn.remove(); });
-                        allInfoButtons.forEach(function(btn) { btn.remove(); });
-                    
-                    // 移除所有舊的按鈕（更徹底的清理）
-                    var allCloseButtons = container.querySelectorAll('#close_button');
-                    var allInfoButtons = container.querySelectorAll('#abgb');
-                    allCloseButtons.forEach(function(btn) { btn.remove(); });
-                    allInfoButtons.forEach(function(btn) { btn.remove(); });
+                    // 先移除舊的按鈕
+                    ['close_button', 'abgb'].forEach(function(id){
+                        var old = container.querySelector('#'+id);
+                        if(old) old.remove();
+                    });
                     
                     // 只有在非 none 模式下才創建按鈕
                     if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                        // 叉叉 - 使用動態樣式
+                        // 叉叉 - 貼著替換圖片的右上角
                         var closeButton = document.createElement('div');
-                        closeButton.id = 'close_button_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                        closeButton.id = 'close_button';
                         closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 1) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
                         
-                        // 驚嘆號 - 使用動態樣式
+                        // 驚嘆號 - 貼著替換圖片的右上角，與叉叉水平對齊
                         var abgb = document.createElement('div');
-                        abgb.id = 'abgb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                        abgb.id = 'abgb';
                         abgb.className = 'abgb';
                         abgb.innerHTML = infoButtonHtml;
-                        abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 18) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
                         
                         // 將按鈕添加到container內，與圖片同層
                         container.appendChild(abgb);
@@ -971,6 +1128,7 @@ class YahooAdReplacer:
                     }
                     replacedCount++;
                 }
+                
                 // 方法3: 處理背景圖片
                 if (replacedCount === 0) {
                     var style = window.getComputedStyle(container);
@@ -979,9 +1137,6 @@ class YahooAdReplacer:
                         container.style.backgroundSize = 'contain';
                         container.style.backgroundRepeat = 'no-repeat';
                         container.style.backgroundPosition = 'center';
-                        container.style.backgroundAttachment = 'scroll';
-                        container.style.backgroundOrigin = 'border-box';
-                        container.style.backgroundClip = 'border-box';
                         replacedCount = 1;
                         
                         // 確保容器是relative
@@ -997,14 +1152,14 @@ class YahooAdReplacer:
                         
                         // 只有在非 none 模式下才創建按鈕
                         if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                            // 添加兩個按鈕 - 使用動態樣式
+                            // 添加兩個按鈕 - 貼著替換圖片的右上角，水平對齊
                             var closeButton = document.createElement('div');
-                            closeButton.id = 'close_button_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                            closeButton.id = 'close_button';
                             closeButton.innerHTML = closeButtonHtml;
                             closeButton.style.cssText = closeButtonStyle;
                             
                             var abgb = document.createElement('div');
-                            abgb.id = 'abgb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                            abgb.id = 'abgb';
                             abgb.className = 'abgb';
                             abgb.innerHTML = infoButtonHtml;
                             abgb.style.cssText = infoButtonStyle;
@@ -1036,31 +1191,35 @@ class YahooAdReplacer:
             
             # 載入網頁
             self.driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
-            try:
-                self.driver.get(url)
-                time.sleep(WAIT_TIME)
-            except Exception as e:
-                print(f"⚠️ 頁面載入警告: {e}")
-                print("🔄 嘗試繼續處理...")
-                time.sleep(2)
+            self.driver.get(url)
             
-            # 獲取頁面標題
-            page_title = self.driver.title
-            print(f"📰 頁面標題: {page_title}")
+            # 等待頁面基本載入
+            time.sleep(WAIT_TIME)
             
-            # 檢查是否成功載入目標頁面
-            current_url = self.driver.current_url
-            if url not in current_url and 'yahoo.com' not in current_url:
-                print(f"警告：頁面可能已重定向，目標: {url}，實際: {current_url}")
-                # 嘗試重新載入
-                self.driver.get(url)
-                time.sleep(WAIT_TIME)
-                current_url = self.driver.current_url
-                print(f"重新載入後 URL: {current_url}")
+            # 等待頁面完全載入
+            self.driver.execute_script("return document.readyState") == "complete"
             
-            # 由於我們專門針對熱門景點版面，所有新聞都應該是旅遊相關的
-            page_title = self.driver.title
-            print(f"✅ 處理熱門景點版面新聞: {page_title}")
+            # 移除可能的全螢幕廣告
+            self.remove_fullscreen_ads()
+            
+            # 額外等待 GDN 廣告載入
+            print("等待 GDN 廣告載入...")
+            time.sleep(5)
+            
+            # 滾動頁面以觸發懶載入的廣告
+            print("滾動頁面以觸發廣告載入...")
+            self.driver.execute_script("""
+                // 滾動到頁面底部
+                window.scrollTo(0, document.body.scrollHeight);
+            """)
+            time.sleep(2)
+            
+            # 滾動回頂部
+            self.driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(2)
+            
+            # 可選：顯示頁面廣告元素調試資訊
+            # self.debug_page_ads()
             
             # 遍歷所有替換圖片
             total_replacements = 0
@@ -1087,26 +1246,10 @@ class YahooAdReplacer:
                 replaced = False
                 processed_positions = set()  # 記錄已處理的位置
                 for ad_info in matching_elements:
-                    # 檢查是否已經處理過這個位置（使用更精確的位置識別）
+                    # 檢查是否已經處理過這個位置
                     position_key = f"{ad_info['position']}_{image_info['width']}x{image_info['height']}"
                     if position_key in processed_positions:
                         print(f"跳過已處理的位置: {ad_info['position']}")
-                        continue
-                    
-                    # 簡化的元素有效性檢查
-                    try:
-                        is_valid = self.driver.execute_script("""
-                            var element = arguments[0];
-                            if (!element || !element.getBoundingClientRect) return false;
-                            var rect = element.getBoundingClientRect();
-                            return rect.width > 0 && rect.height > 0;
-                        """, ad_info['element'])
-                        
-                        if not is_valid:
-                            print(f"跳過無效的廣告位置: {ad_info['position']}")
-                            continue
-                    except Exception as e:
-                        print(f"檢查元素有效性失敗: {e}")
                         continue
                         
                     try:
@@ -1130,43 +1273,24 @@ class YahooAdReplacer:
                                     };
                                 """, ad_info['element'])
                                 
-                                # 計算滾動位置，讓廣告在螢幕中央偏上
+                                # 計算滾動位置，讓廣告在螢幕中央
                                 viewport_height = self.driver.execute_script("return window.innerHeight;")
-                                scroll_position = element_rect['top'] - (viewport_height * 0.3)  # 讓廣告在螢幕上方30%位置
-                                
-                                # 確保滾動位置不為負數
-                                scroll_position = max(0, scroll_position)
+                                scroll_position = element_rect['top'] - (viewport_height / 2) + (element_rect['height'] / 2)
                                 
                                 # 滾動到廣告位置
                                 self.driver.execute_script(f"window.scrollTo(0, {scroll_position});")
                                 print(f"滾動到廣告位置: {scroll_position:.0f}px")
                                 
-                                # 等待滾動完成和頁面穩定
-                                time.sleep(2)
+                                # 等待滾動完成
+                                time.sleep(1)
                                 
                             except Exception as e:
                                 print(f"滾動到廣告位置失敗: {e}")
                             
                             # 每次替換後立即截圖
                             print("準備截圖...")
-                            time.sleep(3)  # 等待頁面穩定和廣告完全載入
-                            
-                            # 簡化的廣告有效性檢查
-                            try:
-                                is_still_valid = self.driver.execute_script("""
-                                    var element = arguments[0];
-                                    if (!element || !element.getBoundingClientRect) return false;
-                                    var rect = element.getBoundingClientRect();
-                                    return rect.width > 0 && rect.height > 0;
-                                """, ad_info['element'])
-                                
-                                if not is_still_valid:
-                                    print("廣告位置已無效，跳過截圖")
-                                    continue
-                            except Exception as e:
-                                print(f"檢查廣告有效性失敗: {e}")
-                            
-                            screenshot_path = self.take_screenshot(page_title)
+                            time.sleep(2)  # 等待頁面穩定
+                            screenshot_path = self.take_screenshot()
                             if screenshot_path:
                                 screenshot_paths.append(screenshot_path)
                                 print(f"✅ 截圖保存: {screenshot_path}")
@@ -1175,50 +1299,24 @@ class YahooAdReplacer:
                             
                             # 截圖後復原該位置的廣告
                             try:
-                                # 簡化還原邏輯：直接移除所有注入的元素
                                 self.driver.execute_script("""
-                                    // 移除所有注入的按鈕
-                                    var buttons = document.querySelectorAll('#close_button, #abgb, #info_button, [id^="close_button_"], [id^="abgb_"]');
-                                    for (var i = 0; i < buttons.length; i++) {
-                                        buttons[i].remove();
-                                    }
+                                    // 移除我們添加的按鈕
+                                    var closeBtn = document.querySelector('#close_button');
+                                    var infoBtn = document.querySelector('#abgb');
+                                    if (closeBtn) closeBtn.remove();
+                                    if (infoBtn) infoBtn.remove();
                                     
-                                    // 移除所有替換的圖片
-                                    var replacedImages = document.querySelectorAll('img[src*="data:image/png;base64"]');
-                                    for (var i = 0; i < replacedImages.length; i++) {
-                                        replacedImages[i].remove();
+                                    // 復原原始廣告內容（這裡需要根據實際情況調整）
+                                    var element = arguments[0];
+                                    if (element.tagName === 'IMG') {
+                                        // 如果是圖片，恢復原始src
+                                        element.src = element.getAttribute('data-original-src') || element.src;
+                                    } else if (element.tagName === 'IFRAME') {
+                                        // 如果是iframe，恢復可見性
+                                        element.style.visibility = 'visible';
                                     }
-                                    
-                                    // 移除替換容器
-                                    var container = document.querySelector('#ad_replacement_container');
-                                    if (container) {
-                                        container.remove();
-                                    }
-                                    
-                                    // 恢復所有隱藏的 iframe
-                                    var hiddenIframes = document.querySelectorAll('iframe[style*="display: none"], iframe[style*="visibility: hidden"]');
-                                    for (var i = 0; i < hiddenIframes.length; i++) {
-                                        hiddenIframes[i].style.display = 'block';
-                                        hiddenIframes[i].style.visibility = 'visible';
-                                    }
-                                    
-                                    // 清理所有 data 屬性
-                                    var allElements = document.querySelectorAll('[data-original-content], [data-original-src], [data-original-display], [data-injected]');
-                                    for (var i = 0; i < allElements.length; i++) {
-                                        allElements[i].removeAttribute('data-original-content');
-                                        allElements[i].removeAttribute('data-original-src');
-                                        allElements[i].removeAttribute('data-original-display');
-                                        allElements[i].removeAttribute('data-injected');
-                                    }
-                                    
-                                    console.log('✅ 已清理所有注入元素');
-                                """)
+                                """, ad_info['element'])
                                 print("✅ 廣告位置已復原")
-                                
-                                # 標記該位置為已處理，避免無限循環
-                                position_key = ad_info['position']
-                                processed_positions.add(position_key)
-                                print(f"📍 標記位置為已處理: {position_key}")
                             except Exception as e:
                                 print(f"復原廣告失敗: {e}")
                             
@@ -1248,41 +1346,61 @@ class YahooAdReplacer:
             print(f"處理網站失敗: {e}")
             return []
     
-    def take_screenshot(self, page_title=None):
+    def take_screenshot(self):
         if not os.path.exists(SCREENSHOT_FOLDER):
             os.makedirs(SCREENSHOT_FOLDER)
             
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # 處理頁面標題，移除特殊字符
-        if page_title:
-            # 移除特殊字符，只保留中文、英文、數字
-            import re
-            clean_title = re.sub(r'[^\u4e00-\u9fff\w\s]', '', page_title)
-            # 限制標題長度，避免檔案名過長
-            clean_title = clean_title[:30].strip()
-            # 替換空格為底線
-            clean_title = clean_title.replace(' ', '_')
-            filepath = f"{SCREENSHOT_FOLDER}/yahoo_{clean_title}_{timestamp}.png"
-        else:
-            filepath = f"{SCREENSHOT_FOLDER}/yahoo_replaced_{timestamp}.png"
+        filepath = f"{SCREENSHOT_FOLDER}/website_replaced_{timestamp}.png"
         
         try:
-            # 確保頁面完全穩定
-            time.sleep(2)  # 等待頁面穩定
-            
-            # 檢查頁面是否仍在載入
-            page_state = self.driver.execute_script("return document.readyState;")
-            if page_state != "complete":
-                print(f"頁面仍在載入中 (readyState: {page_state})，等待...")
-                time.sleep(3)
+            time.sleep(1)  # 等待頁面穩定
             
             system = platform.system()
             
             if system == "Windows":
                 # Windows 多螢幕截圖 - 使用更可靠的方法
                 try:
-                    # 直接使用 MSS 庫 - 最可靠的多螢幕截圖方法
+                    # 方法1: 嘗試使用 PIL 和 win32gui (如果可用)
+                    try:
+                        import win32gui
+                        import win32con
+                        from PIL import ImageGrab
+                        
+                        # 獲取所有螢幕的資訊
+                        def enum_display_monitors():
+                            monitors = []
+                            def callback(hmonitor, hdc, rect, data):
+                                monitors.append({
+                                    'left': rect[0], 'top': rect[1], 
+                                    'right': rect[2], 'bottom': rect[3],
+                                    'width': rect[2] - rect[0], 'height': rect[3] - rect[1]
+                                })
+                                return True
+                            win32gui.EnumDisplayMonitors(None, None, callback, None)
+                            return monitors
+                        
+                        monitors = enum_display_monitors()
+                        print(f"偵測到 {len(monitors)} 個螢幕")
+                        
+                        if self.screen_id <= len(monitors):
+                            monitor = monitors[self.screen_id - 1]
+                            bbox = (monitor['left'], monitor['top'], monitor['right'], monitor['bottom'])
+                            screenshot = ImageGrab.grab(bbox)
+                            screenshot.save(filepath)
+                            print(f"使用 PIL 截圖 (螢幕 {self.screen_id}): {monitor}")
+                            return filepath
+                        else:
+                            # 螢幕 ID 超出範圍，使用主螢幕
+                            screenshot = ImageGrab.grab()
+                            screenshot.save(filepath)
+                            print(f"螢幕 ID 超出範圍，使用主螢幕截圖")
+                            return filepath
+                            
+                    except ImportError:
+                        print("win32gui 或 PIL 未安裝，嘗試 pyautogui")
+                        
+                        # 直接使用 MSS 庫 - 最可靠的多螢幕截圖方法
                         import mss
                         with mss.mss() as sct:
                             monitors = sct.monitors
@@ -1425,55 +1543,48 @@ def main():
         print("未選擇螢幕，程式結束")
         return
     
+    # 使用設定的 BASE_URL
+    base_url = BASE_URL
+    
+    print(f"目標網站: {base_url}")
     print(f"\n正在啟動 Chrome 瀏覽器到螢幕 {screen_id}...")
-    bot = YahooAdReplacer(headless=False, screen_id=screen_id)
+    
+    bot = WebsiteAdReplacer(headless=False, screen_id=screen_id)
     
     try:
-        # 使用 Yahoo 新聞熱門景點版面的 URL
-        yahoo_url = "https://tw.news.yahoo.com/tourist-spots"
-        print(f"目標網站: {yahoo_url}")
-        
-        # 尋找新聞連結
-        news_urls = bot.get_random_news_urls(yahoo_url, NEWS_COUNT)
+        # 獲取新聞連結
+        news_urls = bot.get_random_news_urls(base_url, NEWS_COUNT)
         
         if not news_urls:
-            print("無法獲取新聞連結")
+            print("無法獲取部落格連結")
             return
         
-        # 檢查獲取的連結是否都是熱門景點版面的
-        tourist_urls = []
-        for url in news_urls:
-            # 簡化的熱門景點版面檢查 - 只要來自 Yahoo 新聞且包含 .html 就接受
-            if ('yahoo.com' in url and 
-                'tw.news.yahoo.com' in url and
-                '.html' in url and
-                not any(exclude in url.lower() for exclude in ['/mail/', '/shopping/', '/auction/', '/finance/', '/sports/', '/politics/', '/international/', '/society/', '/health/', '/taste/', '/weather/', '/archive/', '/most-popular/', '/topic/', 'login', 'signin', 'register', 'account', 'profile', 'settings', 'help', 'about', 'contact', 'privacy', 'terms'])):
-                tourist_urls.append(url)
-                print(f"✅ 確認 Yahoo 新聞連結: {url}")
-            else:
-                print(f"❌ 跳過非 Yahoo 新聞連結: {url}")
-        
-        if not tourist_urls:
-            print("沒有找到有效的熱門景點版面連結")
-            return
-        
-        print(f"獲取到 {len(tourist_urls)} 個熱門景點版面新聞連結")
+        print(f"獲取到 {len(news_urls)} 個部落格連結")
         print(f"目標截圖數量: {SCREENSHOT_COUNT}")
-        
-        # 使用過濾後的熱門景點版面連結
-        news_urls = tourist_urls
         
         total_screenshots = 0
         
+        # 記錄已處理的URL，避免重複
+        processed_urls = set()
+        
         # 處理每個網站
         for i, url in enumerate(news_urls, 1):
+            # 檢查是否已經處理過這個URL
+            if url in processed_urls:
+                print(f"跳過已處理的URL: {url}")
+                continue
+                
             print(f"\n{'='*50}")
             print(f"處理第 {i}/{len(news_urls)} 個網站")
+            print(f"網站URL: {url}")
             print(f"{'='*50}")
             
             try:
                 # 處理網站並嘗試替換廣告
                 screenshot_paths = bot.process_website(url)
+                
+                # 記錄已處理的URL
+                processed_urls.add(url)
                 
                 if screenshot_paths:
                     print(f"✅ 成功處理網站！共產生 {len(screenshot_paths)} 張截圖")
@@ -1484,39 +1595,25 @@ def main():
                         print(f"✅ 已達到目標截圖數量: {SCREENSHOT_COUNT}")
                         break
                 else:
-                    print("❌ 網站處理完成，但沒有找到可替換的廣告或主題不符")
+                    print("❌ 網站處理完成，但沒有找到可替換的廣告")
                 
             except Exception as e:
                 print(f"❌ 處理網站失敗: {e}")
-                print("繼續處理下一個網站...")
                 continue
             
-            # 在處理下一個網站前稍作休息
+            # 在處理下一個網站前稍作休息並回到首頁
             if i < len(news_urls) and total_screenshots < SCREENSHOT_COUNT:
                 print("等待 3 秒後處理下一個網站...")
                 time.sleep(3)
-            
-            # 如果處理的網站數量超過一半但截圖數量不足，重新獲取更多連結
-            if i >= len(news_urls) // 2 and total_screenshots < SCREENSHOT_COUNT // 2:
-                print("⚠️  截圖數量不足，嘗試重新獲取更多熱門景點連結...")
+                
+                # 回到首頁，確保下次獲取文章時的一致性
                 try:
-                    additional_urls = bot.get_random_news_urls(yahoo_url, NEWS_COUNT // 2)
-                    if additional_urls:
-                        # 過濾出熱門景點相關的連結
-                        additional_tourist_urls = []
-                        for url in additional_urls:
-                            if ('yahoo.com' in url and 
-                                ('/tourist-spots' in url or 'tw.news.yahoo.com' in url) and
-                                any(keyword in url.lower() for keyword in ['景點', '旅遊', '美食', '住宿', '旅宿', '避暑', '秘境', '風景', '觀光', '度假', '溫泉', '海灘', '山景', '湖景', '古蹟', '建築', '步道', '輕旅行', '週末', '假期', '夏日', '涼夏', '療癒', '美景', '拍照', '打卡', 'instagram', '淡水', '榕堤', '夕陽', '旅館', '飯店', '民宿', '度假村'])):
-                                additional_tourist_urls.append(url)
-                        
-                        if additional_tourist_urls:
-                            news_urls.extend(additional_tourist_urls)
-                            print(f"✅ 新增 {len(additional_tourist_urls)} 個熱門景點連結")
-                        else:
-                            print("❌ 無法獲取額外的熱門景點連結")
+                    print("回到首頁...")
+                    bot.driver.get(base_url)
+                    time.sleep(2)
+                    bot.remove_fullscreen_ads()
                 except Exception as e:
-                    print(f"重新獲取連結失敗: {e}")
+                    print(f"回到首頁失敗: {e}")
         
         print(f"\n{'='*50}")
         print(f"所有網站處理完成！總共產生 {total_screenshots} 張截圖")
@@ -1546,7 +1643,7 @@ def test_screen_setup():
     print(f"\n正在測試螢幕 {screen_id}...")
     
     # 創建測試用的瀏覽器實例
-    test_bot = YahooAdReplacer(headless=False, screen_id=screen_id)
+    test_bot = WebsiteAdReplacer(headless=False, screen_id=screen_id)
     
     try:
         # 開啟測試頁面
@@ -1555,7 +1652,7 @@ def test_screen_setup():
         
         # 測試截圖功能
         print("測試截圖功能...")
-        screenshot_path = test_bot.take_screenshot("測試頁面")
+        screenshot_path = test_bot.take_screenshot()
         
         if screenshot_path:
             print(f"✅ 螢幕 {screen_id} 設定成功！")

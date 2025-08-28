@@ -1025,7 +1025,7 @@ class GoogleAdReplacer:
             os.makedirs(SCREENSHOT_FOLDER)
             
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filepath = f"{SCREENSHOT_FOLDER}/ltn_replaced_{timestamp}.png"
+        filepath = f"{SCREENSHOT_FOLDER}/ltn_{timestamp}.png"
         
         try:
             time.sleep(1)  # 等待頁面穩定
