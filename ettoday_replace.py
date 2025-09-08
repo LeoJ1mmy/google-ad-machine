@@ -4,7 +4,7 @@
 import time
 import os
 import base64
-import random
+# import random  # 已移除隨機選擇功能
 import re
 import platform
 import subprocess
@@ -13,13 +13,15 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from datetime import datetime
 
-# 載入設定檔
+# 載入 GIF 功能專用設定檔
 try:
-    from config import *
-    print("成功載入 config.py 設定檔")
+    from gif_config import *
+    print("成功載入 gif_config.py 設定檔")
     print(f"SCREENSHOT_COUNT 設定: {SCREENSHOT_COUNT}")
     print(f"NEWS_COUNT 設定: {NEWS_COUNT}")
     print(f"IMAGE_USAGE_COUNT 設定: {IMAGE_USAGE_COUNT}")
+    print(f"GIF_PRIORITY 設定: {GIF_PRIORITY}")
+    # print(f"RANDOM_SELECTION 設定: {RANDOM_SELECTION}")  # 已移除隨機選擇功能
 except ImportError:
     print("找不到 config.py，使用預設設定")
     # 預設設定
@@ -42,6 +44,9 @@ except ImportError:
     HEADLESS_MODE = False
     FULLSCREEN_MODE = True
     SCREENSHOT_FOLDER = "screenshots"
+    # GIF 使用策略預設設定
+    GIF_PRIORITY = True
+    # RANDOM_SELECTION = False  # 已移除隨機選擇功能
 
 class ScreenManager:
     """螢幕管理器，用於偵測和管理多螢幕"""
@@ -254,6 +259,14 @@ class EttodayAdReplacer:
     def __init__(self, headless=False, screen_id=1):
         print("正在初始化 ETtoday 廣告替換器...")
         self.screen_id = screen_id
+        
+        # 統計變數
+        self.total_screenshots = 0      # 總截圖數量
+        self.total_replacements = 0     # 總替換次數
+        self.gif_replacements = 0       # GIF 替換次數
+        self.static_replacements = 0    # 靜態圖片替換次數
+        self.replacement_details = []   # 詳細替換記錄
+        
         self.setup_driver(headless)
         self.load_replace_images()
         print("ETtoday 廣告替換器初始化完成！")
@@ -275,6 +288,22 @@ class EttodayAdReplacer:
         chrome_options.add_argument('--disable-images=false')  # 確保圖片載入
         chrome_options.add_argument('--window-size=1920,1080')
         
+        # 增加穩定性設定
+        chrome_options.add_argument('--disable-gpu')  # 禁用GPU加速，避免GPU錯誤
+        chrome_options.add_argument('--disable-software-rasterizer')
+        chrome_options.add_argument('--disable-background-timer-throttling')
+        chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+        chrome_options.add_argument('--disable-renderer-backgrounding')
+        chrome_options.add_argument('--disable-features=TranslateUI')
+        chrome_options.add_argument('--disable-ipc-flooding-protection')
+        chrome_options.add_argument('--no-first-run')
+        chrome_options.add_argument('--no-default-browser-check')
+        
+        # 網路和載入優化
+        chrome_options.add_argument('--aggressive-cache-discard')
+        chrome_options.add_argument('--memory-pressure-off')
+        chrome_options.add_argument('--max_old_space_size=4096')
+        
         # 多螢幕支援 - 計算螢幕偏移量
         if self.screen_id > 1:
             screen_offset = (self.screen_id - 1) * 1920
@@ -293,8 +322,9 @@ class EttodayAdReplacer:
         if not headless:
             self.move_to_screen()
         
-        # 設置頁面載入超時
-        self.driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
+        # 設置超時時間
+        self.driver.set_page_load_timeout(30)  # 增加到30秒
+        self.driver.implicitly_wait(10)  # 隱式等待10秒
         print("瀏覽器設置完成！")
     
     def move_to_screen(self):
@@ -329,6 +359,7 @@ class EttodayAdReplacer:
     def load_replace_images(self):
         """載入替換圖片並解析尺寸"""
         self.replace_images = []
+        self.images_by_size = {}  # 按尺寸分組的圖片字典
         
         if not os.path.exists(REPLACE_IMAGE_FOLDER):
             print(f"找不到替換圖片資料夾: {REPLACE_IMAGE_FOLDER}")
@@ -337,21 +368,38 @@ class EttodayAdReplacer:
         print(f"開始載入 {REPLACE_IMAGE_FOLDER} 資料夾中的圖片...")
         
         for filename in os.listdir(REPLACE_IMAGE_FOLDER):
-            if filename.endswith(('.jpg', '.jpeg', '.png')):
+            if filename.endswith(('.jpg', '.jpeg', '.png', '.gif')):
                 # 解析檔案名中的尺寸
                 size_match = re.search(r'google_(\d+)x(\d+)', filename)
                 if size_match:
                     width = int(size_match.group(1))
                     height = int(size_match.group(2))
+                    size_key = f"{width}x{height}"
                     
                     image_path = os.path.join(REPLACE_IMAGE_FOLDER, filename)
-                    self.replace_images.append({
+                    file_type = "GIF" if filename.lower().endswith('.gif') else "靜態圖片"
+                    
+                    image_info = {
                         'path': image_path,
                         'filename': filename,
                         'width': width,
-                        'height': height
-                    })
-                    print(f"載入圖片: {filename} ({width}x{height})")
+                        'height': height,
+                        'type': file_type,
+                        'is_gif': filename.lower().endswith('.gif')
+                    }
+                    
+                    self.replace_images.append(image_info)
+                    
+                    # 按尺寸分組
+                    if size_key not in self.images_by_size:
+                        self.images_by_size[size_key] = {'static': [], 'gif': []}
+                    
+                    if image_info['is_gif']:
+                        self.images_by_size[size_key]['gif'].append(image_info)
+                    else:
+                        self.images_by_size[size_key]['static'].append(image_info)
+                    
+                    print(f"載入{file_type}: {filename} ({width}x{height})")
                 else:
                     print(f"跳過不符合命名規則的圖片: {filename}")
         
@@ -359,9 +407,72 @@ class EttodayAdReplacer:
         self.replace_images.sort(key=lambda x: x['filename'])
         print(f"總共載入 {len(self.replace_images)} 張替換圖片")
         
+        # 顯示按尺寸分組的統計
+        print("\n📊 圖片尺寸分佈統計:")
+        for size_key, images in sorted(self.images_by_size.items()):
+            static_count = len(images['static'])
+            gif_count = len(images['gif'])
+            total_count = static_count + gif_count
+            
+            status_parts = []
+            if static_count > 0:
+                status_parts.append(f"{static_count}張靜態")
+            if gif_count > 0:
+                status_parts.append(f"{gif_count}張GIF")
+            
+            status = " + ".join(status_parts)
+            print(f"  {size_key}: {total_count}張 ({status})")
+        
         # 顯示載入的圖片清單
+        print(f"\n📋 完整圖片清單:")
         for i, img in enumerate(self.replace_images):
-            print(f"  {i+1}. {img['filename']} ({img['width']}x{img['height']})")
+            type_icon = "🎬" if img['is_gif'] else "🖼️"
+            print(f"  {i+1}. {type_icon} {img['filename']} ({img['width']}x{img['height']})")
+    
+    def select_image_by_strategy(self, static_images, gif_images, size_key):
+        """根據 GIF_PRIORITY 配置選擇圖片（已移除隨機選擇功能）"""
+        
+        # 如果沒有任何圖片，返回 None
+        if not static_images and not gif_images:
+            return None
+        
+        # 如果只有一種類型的圖片，直接選擇第一個
+        if not static_images and gif_images:
+            selected = gif_images[0]  # 選擇第一個 GIF
+            print(f"   🎬 選擇 GIF (唯一選項): {selected['filename']}")
+            return selected
+        elif static_images and not gif_images:
+            selected = static_images[0]  # 選擇第一個靜態圖片
+            print(f"   🖼️ 選擇靜態圖片 (唯一選項): {selected['filename']}")
+            return selected
+        
+        # 兩種類型都有，根據 GIF_PRIORITY 策略選擇
+        try:
+            gif_priority = globals().get('GIF_PRIORITY', True)
+        except:
+            gif_priority = True
+        
+        # 優先級模式：根據 GIF_PRIORITY 決定
+        if gif_priority:
+            # 優先使用 GIF
+            if gif_images:
+                selected = gif_images[0]  # 選擇第一個 GIF
+                print(f"   🎬 優先選擇 GIF: {selected['filename']}")
+                return selected
+            else:
+                selected = static_images[0]  # 選擇第一個靜態圖片
+                print(f"   🖼️ 選擇靜態圖片 (GIF 不可用): {selected['filename']}")
+                return selected
+        else:
+            # 優先使用靜態圖片
+            if static_images:
+                selected = static_images[0]  # 選擇第一個靜態圖片
+                print(f"   🖼️ 優先選擇靜態圖片: {selected['filename']}")
+                return selected
+            else:
+                selected = gif_images[0]  # 選擇第一個 GIF
+                print(f"   🎬 選擇 GIF (靜態圖片不可用): {selected['filename']}")
+                return selected
     
     def load_image_base64(self, image_path):
         if not os.path.exists(image_path):
@@ -371,29 +482,74 @@ class EttodayAdReplacer:
             return base64.b64encode(f.read()).decode('utf-8')
     
     def get_random_news_urls(self, base_url, count=5):
-        try:
-            self.driver.get(base_url)
-            time.sleep(WAIT_TIME)
-            
-            # ETtoday 旅遊雲的文章連結選擇器
-            link_selectors = [
-                "a[href*='/article/']",
-                "a[href*='article']"
-            ]
-            
-            news_urls = []
-            
-            for selector in link_selectors:
-                links = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                for link in links:
-                    href = link.get_attribute('href')
-                    if href and href not in news_urls and 'travel.ettoday.net/article' in href:
-                        news_urls.append(href)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                print(f"嘗試載入首頁... (第 {attempt + 1}/{max_retries} 次)")
+                
+                # 使用更短的超時時間進行重試
+                self.driver.set_page_load_timeout(20)
+                self.driver.get(base_url)
+                
+                print("首頁載入成功，等待內容載入...")
+                time.sleep(WAIT_TIME + 2)  # 增加等待時間
+                
+                # 檢查頁面是否正確載入
+                page_title = self.driver.title
+                if not page_title or "ETtoday" not in page_title:
+                    print(f"頁面載入異常，標題: {page_title}")
+                    if attempt < max_retries - 1:
+                        continue
+                
+                print(f"頁面載入成功: {page_title}")
+                
+                # ETtoday 旅遊雲的文章連結選擇器
+                link_selectors = [
+                    "a[href*='/article/']",
+                    "a[href*='article']"
+                ]
+                
+                news_urls = []
+                
+                for selector in link_selectors:
+                    try:
+                        links = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        print(f"找到 {len(links)} 個 {selector} 連結")
                         
-            return random.sample(news_urls, min(NEWS_COUNT, len(news_urls)))
-        except Exception as e:
-            print(f"獲取新聞連結失敗: {e}")
-            return []
+                        for link in links:
+                            try:
+                                href = link.get_attribute('href')
+                                if href and href not in news_urls and 'travel.ettoday.net/article' in href:
+                                    news_urls.append(href)
+                            except:
+                                continue
+                    except Exception as e:
+                        print(f"搜尋連結失敗 ({selector}): {e}")
+                        continue
+                
+                if news_urls:
+                    # 選擇前 N 個新聞連結（已移除隨機選擇）
+                    selected_urls = news_urls[:min(NEWS_COUNT, len(news_urls))]
+                    print(f"成功獲取 {len(selected_urls)} 個新聞連結")
+                    return selected_urls
+                else:
+                    print("未找到任何新聞連結")
+                    if attempt < max_retries - 1:
+                        print("重新嘗試...")
+                        time.sleep(3)
+                        continue
+                        
+            except Exception as e:
+                print(f"第 {attempt + 1} 次嘗試失敗: {e}")
+                if attempt < max_retries - 1:
+                    print("等待後重試...")
+                    time.sleep(5)
+                    continue
+                else:
+                    print("所有重試都失敗了")
+        
+        print("無法獲取新聞連結")
+        return []
     
 
     def analyze_page_sizes(self):
@@ -659,46 +815,55 @@ class EttodayAdReplacer:
         except NameError:
             button_style = "dots"  # 預設樣式
         
+        # 獲取按鈕偏移量設定
+        try:
+            top_offset = BUTTON_TOP_OFFSET
+        except NameError:
+            top_offset = 0  # 預設偏移量
+        
+        # 計算實際的 top 值 (1px + 偏移量)
+        actual_top = 1 + top_offset
+        
         # 預先定義的按鈕樣式
         # 統一的資訊按鈕樣式 - 使用 Google 標準設計
         unified_info_button = {
             "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
-            "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+            "style": f'position:absolute;top:{actual_top}px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
         }
         
         button_styles = {
             "dots": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
                 },
                 "info_button": unified_info_button
             },
             "cross": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
                 },
                 "info_button": unified_info_button
             },
             "adchoices": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "style": f'position:absolute;top:{actual_top}px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
                 }
             },
             "adchoices_dots": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:0px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "style": f'position:absolute;top:{actual_top}px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
                 }
             },
             "none": {
@@ -734,6 +899,15 @@ class EttodayAdReplacer:
                 print(f"尺寸不匹配: 期望 {target_width}x{target_height}, 實際 {original_info['width']}x{original_info['height']}")
                 return False
             
+            # 獲取按鈕偏移量設定
+            try:
+                top_offset = BUTTON_TOP_OFFSET
+            except NameError:
+                top_offset = 0  # 預設偏移量
+            
+            # 計算實際的 top 值 (1px + 偏移量)
+            actual_top = 1 + top_offset
+            
             # 獲取按鈕樣式
             button_style = self.get_button_style()
             close_button_html = button_style["close_button"]["html"]
@@ -744,6 +918,9 @@ class EttodayAdReplacer:
             # 檢查是否為 "none" 模式
             current_button_style = getattr(self, 'button_style', 'dots')
             is_none_mode = current_button_style == "none"
+            
+            # 檢查是否為 GIF 檔案
+            is_gif = ad_info and ad_info.get('is_gif', False) if ad_info else False
             
             # 只替換圖片，保留廣告按鈕，支援動態尺寸調整
             success = self.driver.execute_script("""
@@ -758,8 +935,8 @@ class EttodayAdReplacer:
                         }
                         .abgb {
                             position: absolute;
-                            right: 16px;
-                            top: 0px;
+                            right: 17px;
+                            top: """ + str(actual_top) + """px;
                         }
                         .abgb {
                             display: inline-block;
@@ -773,7 +950,7 @@ class EttodayAdReplacer:
                             height: 15px;
                             position: absolute;
                             right: 1px;
-                            top: 1px;
+                            top: """ + str(actual_top) + """px;
                             text-rendering: geometricPrecision;
                             z-index: 2147483646;
                         }
@@ -803,14 +980,14 @@ class EttodayAdReplacer:
                             cursor: pointer;
                             position: absolute; 
                             z-index: 100; 
-                            top: 0px;
+                            top: """ + str(actual_top) + """px;
                             bottom: auto;
                             vertical-align: top;
-                            margin-top: 1px;
-                            right: 0px;
+                            margin-top: 0px;
+                            right: 1px;
                             left: auto;
                             text-align: right;
-                            margin-right: 1px;
+                            margin-right: 0px;
                             display: block; 
                             width: 15px; 
                             height: 15px;
@@ -824,6 +1001,31 @@ class EttodayAdReplacer:
                             width: 15px; 
                             height: 15px; 
                             line-height: 0;
+                        }
+                        [id^="close_button_"] { 
+                            text-decoration: none; 
+                            margin: 0; 
+                            padding: 0; 
+                            border: none;
+                            cursor: pointer;
+                            position: absolute !important; 
+                            z-index: 100 !important; 
+                            top: """ + str(actual_top) + """px !important;
+                            right: 1px !important;
+                            display: block !important; 
+                            width: 15px !important; 
+                            height: 15px !important;
+                            background-color: rgba(255,255,255,1) !important;
+                        }
+                        [id^="abgb_"] { 
+                            position: absolute !important;
+                            right: 17px !important;
+                            top: """ + str(actual_top) + """px !important;
+                            width: 15px !important; 
+                            height: 15px !important;
+                            z-index: 100 !important;
+                            display: block !important;
+                            background-color: rgba(255,255,255,1) !important;
                         }
                     `;
                     document.head.appendChild(style);
@@ -846,14 +1048,21 @@ class EttodayAdReplacer:
                 if (window.getComputedStyle(container).position === 'static') {
                   container.style.position = 'relative';
                 }
+                // 生成唯一ID避免衝突
+                var uniqueId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                var closeButtonId = 'close_button_' + uniqueId;
+                var infoButtonId = 'abgb_' + uniqueId;
+                
                 // 先移除舊的（避免重複）
-                ['close_button', 'abgb'].forEach(function(id){
+                ['close_button', 'abgb', closeButtonId, infoButtonId].forEach(function(id){
                   var old = container.querySelector('#'+id);
                   if(old) old.remove();
                 });
                 
                 var replacedCount = 0;
-                var newImageSrc = 'data:image/png;base64,' + imageBase64;
+                var isGif = arguments[9] || false;
+                var mimeType = isGif ? 'image/gif' : 'image/png';
+                var newImageSrc = 'data:' + mimeType + ';base64,' + imageBase64;
                 
                 // 方法1: 只替換img標籤的src，不移除元素
                 var imgs = container.querySelectorAll('img');
@@ -915,7 +1124,7 @@ class EttodayAdReplacer:
                         }
                         
                         // 先移除舊的按鈕
-                        ['close_button', 'abgb'].forEach(function(id){
+                        [closeButtonId, infoButtonId, 'close_button', 'abgb'].forEach(function(id){
                             var old = imgParent.querySelector('#'+id);
                             if(old) old.remove();
                         });
@@ -925,7 +1134,7 @@ class EttodayAdReplacer:
                             // 叉叉 - 貼著替換圖片的右上角
                             if (closeButtonHtml) {
                                 var closeButton = document.createElement('div');
-                                closeButton.id = 'close_button';
+                                closeButton.id = closeButtonId;
                                 closeButton.innerHTML = closeButtonHtml;
                                 closeButton.style.cssText = closeButtonStyle;
                                 imgParent.appendChild(closeButton);
@@ -934,7 +1143,7 @@ class EttodayAdReplacer:
                             // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
                             if (infoButtonHtml) {
                                 var abgb = document.createElement('div');
-                                abgb.id = 'abgb';
+                                abgb.id = infoButtonId;
                                 abgb.className = 'abgb';
                                 abgb.innerHTML = infoButtonHtml;
                                 abgb.style.cssText = infoButtonStyle;
@@ -972,7 +1181,7 @@ class EttodayAdReplacer:
                     container.appendChild(newImg);
                     
                     // 先移除舊的按鈕
-                    ['close_button', 'abgb'].forEach(function(id){
+                    [closeButtonId, infoButtonId, 'close_button', 'abgb'].forEach(function(id){
                         var old = container.querySelector('#'+id);
                         if(old) old.remove();
                     });
@@ -982,16 +1191,16 @@ class EttodayAdReplacer:
                         // 叉叉 - 貼著替換圖片的右上角
                         if (closeButtonHtml) {
                             var closeButton = document.createElement('div');
-                            closeButton.id = 'close_button';
+                            closeButton.id = closeButtonId;
                             closeButton.innerHTML = closeButtonHtml;
-                            closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
+                            closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 1) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
                             container.appendChild(closeButton);
                         }
                         
                         // 驚嘆號 - 貼著替換圖片的右上角，與叉叉水平對齊
                         if (infoButtonHtml) {
                             var abgb = document.createElement('div');
-                            abgb.id = 'abgb';
+                            abgb.id = infoButtonId;
                             abgb.className = 'abgb';
                             abgb.innerHTML = infoButtonHtml;
                             abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
@@ -1030,7 +1239,7 @@ class EttodayAdReplacer:
                         }
                         
                         // 先移除舊的按鈕
-                        ['close_button', 'abgb'].forEach(function(id){
+                        [closeButtonId, infoButtonId, 'close_button', 'abgb'].forEach(function(id){
                             var old = container.querySelector('#'+id);
                             if(old) old.remove();
                         });
@@ -1040,7 +1249,7 @@ class EttodayAdReplacer:
                             // 叉叉 - 貼著替換圖片的右上角
                             if (closeButtonHtml) {
                                 var closeButton = document.createElement('div');
-                                closeButton.id = 'close_button';
+                                closeButton.id = closeButtonId;
                                 closeButton.innerHTML = closeButtonHtml;
                                 closeButton.style.cssText = closeButtonStyle;
                                 container.appendChild(closeButton);
@@ -1049,7 +1258,7 @@ class EttodayAdReplacer:
                             // 驚嘆號 - 貼著替換圖片的右上角，與叉叉對齊
                             if (infoButtonHtml) {
                                 var abgb = document.createElement('div');
-                                abgb.id = 'abgb';
+                                abgb.id = infoButtonId;
                                 abgb.className = 'abgb';
                                 abgb.innerHTML = infoButtonHtml;
                                 abgb.style.cssText = infoButtonStyle;
@@ -1059,7 +1268,7 @@ class EttodayAdReplacer:
                     }
                 }
                 return replacedCount > 0;
-            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style, is_none_mode)
+            """, element, image_data, target_width, target_height, close_button_html, close_button_style, info_button_html, info_button_style, is_none_mode, is_gif)
             
             if success:
                 print(f"替換廣告 {original_info['width']}x{original_info['height']}")
@@ -1106,38 +1315,72 @@ class EttodayAdReplacer:
             print("\n分析頁面元素尺寸分佈...")
             self.analyze_page_sizes()
             
+            # 按尺寸處理，而不是按單個圖片處理
+            processed_sizes = set()
+            
             for image_info in self.replace_images:
-                print(f"\n檢查圖片: {image_info['filename']} ({image_info['width']}x{image_info['height']})")
+                size_key = f"{image_info['width']}x{image_info['height']}"
                 
-                # 載入當前圖片
-                try:
-                    image_data = self.load_image_base64(image_info['path'])
-                except Exception as e:
-                    print(f"載入圖片失敗: {e}")
+                # 如果這個尺寸已經處理過，跳過
+                if size_key in processed_sizes:
                     continue
+                
+                processed_sizes.add(size_key)
+                
+                print(f"\n🔍 檢查尺寸: {size_key}")
+                
+                # 獲取這個尺寸的所有可用圖片
+                available_images = self.images_by_size.get(size_key, {'static': [], 'gif': []})
+                static_images = available_images['static']
+                gif_images = available_images['gif']
+                
+                print(f"   可用圖片: {len(static_images)}張靜態 + {len(gif_images)}張GIF")
                 
                 # 掃描網頁尋找符合尺寸的廣告
                 matching_elements = self.scan_entire_page_for_ads(image_info['width'], image_info['height'])
                 
                 if not matching_elements:
-                    print(f"未找到符合 {image_info['width']}x{image_info['height']} 尺寸的廣告位置")
+                    print(f"未找到符合 {size_key} 尺寸的廣告位置")
                     continue
                 
                 # 嘗試替換找到的廣告
                 replaced = False
                 processed_positions = set()  # 記錄已處理的位置
+                
                 for ad_info in matching_elements:
                     # 檢查是否已經處理過這個位置
-                    position_key = f"{ad_info['position']}_{image_info['width']}x{image_info['height']}"
+                    position_key = f"{ad_info['position']}_{size_key}"
                     if position_key in processed_positions:
                         print(f"跳過已處理的位置: {ad_info['position']}")
                         continue
-                        
+                    
+                    # 根據配置策略選擇圖片
+                    selected_image = self.select_image_by_strategy(static_images, gif_images, size_key)
+                    if not selected_image:
+                        print(f"   ❌ 沒有可用的 {size_key} 圖片")
+                        continue
+                    
                     try:
-                        if self.replace_ad_content(ad_info['element'], image_data, image_info['width'], image_info['height'], ad_info):
-                            print(f"成功替換廣告: {ad_info['width']}x{ad_info['height']} at {ad_info['position']}")
+                        # 載入選中的圖片
+                        image_data = self.load_image_base64(selected_image['path'])
+                        
+                        # 將圖片類型資訊加入 ad_info
+                        ad_info_with_type = {**ad_info, 'type': selected_image['type'], 'is_gif': selected_image['is_gif']}
+                        
+                        if self.replace_ad_content(ad_info['element'], image_data, selected_image['width'], selected_image['height'], ad_info_with_type):
+                            type_icon = "🎬" if selected_image['is_gif'] else "🖼️"
+                            print(f"✅ 成功替換廣告: {type_icon} {ad_info['width']}x{ad_info['height']} at {ad_info['position']}")
+                            print(f"   📄 使用檔案: {selected_image['filename']}")
                             replaced = True
                             total_replacements += 1
+                            
+                            # 更新統計
+                            self.total_replacements += 1
+                            if selected_image['is_gif']:
+                                self.gif_replacements += 1
+                            else:
+                                self.static_replacements += 1
+                            
                             processed_positions.add(position_key)  # 記錄已處理的位置
                             
                             # 滾動到廣告位置確保可見
@@ -1174,25 +1417,65 @@ class EttodayAdReplacer:
                             screenshot_path = self.take_screenshot(page_title)
                             if screenshot_path:
                                 screenshot_paths.append(screenshot_path)
+                                self.total_screenshots += 1  # 更新截圖統計
                                 print(f"✅ 截圖保存: {screenshot_path}")
+                                
+                                # 記錄詳細資訊（包含截圖路徑）
+                                self.replacement_details.append({
+                                    'type': 'GIF' if selected_image['is_gif'] else '靜態圖片',
+                                    'filename': selected_image['filename'],
+                                    'size': f"{ad_info['width']}x{ad_info['height']}",
+                                    'position': ad_info['position'],
+                                    'screenshot_path': screenshot_path
+                                })
                             else:
                                 print("❌ 截圖失敗")
+                                # 即使截圖失敗也記錄替換資訊
+                                self.replacement_details.append({
+                                    'type': 'GIF' if selected_image['is_gif'] else '靜態圖片',
+                                    'filename': selected_image['filename'],
+                                    'size': f"{ad_info['width']}x{ad_info['height']}",
+                                    'position': ad_info['position'],
+                                    'screenshot_path': None
+                                })
                             
                             # 截圖後復原該位置的廣告
                             try:
                                 self.driver.execute_script("""
                                     var element = arguments[0];
                                     
-                                    // 移除我們添加的按鈕
-                                    var elementsToRemove = document.querySelectorAll('#close_button, #abgb');
-                                    for (var i = 0; i < elementsToRemove.length; i++) {
-                                        elementsToRemove[i].remove();
+                                    // 只在當前廣告容器內移除我們添加的按鈕（包括動態ID）
+                                    var containerButtons = element.querySelectorAll('#close_button, #abgb, [id^="close_button_"], [id^="abgb_"]');
+                                    for (var i = 0; i < containerButtons.length; i++) {
+                                        containerButtons[i].remove();
                                     }
                                     
-                                    // 移除我們添加的圖片（通過data URI識別）
-                                    var addedImages = document.querySelectorAll('img[src^="data:image/png;base64"]');
-                                    for (var i = 0; i < addedImages.length; i++) {
-                                        addedImages[i].remove();
+                                    // 檢查父容器中的按鈕（如果廣告在父層）
+                                    var parent = element.parentElement;
+                                    if (parent) {
+                                        var parentButtons = parent.querySelectorAll('#close_button, #abgb, [id^="close_button_"], [id^="abgb_"]');
+                                        for (var i = 0; i < parentButtons.length; i++) {
+                                            parentButtons[i].remove();
+                                        }
+                                    }
+                                    
+                                    // 只移除當前容器內我們添加的圖片（通過data URI識別）
+                                    var containerImages = element.querySelectorAll('img[src^="data:image/"]');
+                                    for (var i = 0; i < containerImages.length; i++) {
+                                        // 只移除我們添加的圖片（base64 格式）
+                                        if (containerImages[i].src.includes('base64')) {
+                                            containerImages[i].remove();
+                                        }
+                                    }
+                                    
+                                    // 檢查父容器中我們添加的圖片
+                                    if (parent) {
+                                        var parentImages = parent.querySelectorAll('img[src^="data:image/"]');
+                                        for (var i = 0; i < parentImages.length; i++) {
+                                            if (parentImages[i].src.includes('base64')) {
+                                                parentImages[i].remove();
+                                            }
+                                        }
                                     }
                                     
                                     // 復原原始廣告內容
@@ -1249,19 +1532,28 @@ class EttodayAdReplacer:
                                     for (var i = 0; i < iframes.length; i++) {
                                         restoreElement(iframes[i]);
                                     }
+                                    
+                                    // 移除我們添加的按鈕
+                                    var buttonsToRemove = element.querySelectorAll('[id^="close_button"], [id^="abgb"], #close_button, #abgb');
+                                    for (var i = 0; i < buttonsToRemove.length; i++) {
+                                        buttonsToRemove[i].remove();
+                                    }
                                 """, ad_info['element'])
-                                print("✅ 廣告位置已復原")
+                                print(f"✅ 廣告位置已復原: {ad_info['width']}x{ad_info['height']} at {ad_info['position']}")
                             except Exception as e:
                                 print(f"復原廣告失敗: {e}")
                             
                             # 繼續尋找下一個廣告位置，不要break
                             continue
                     except Exception as e:
-                        print(f"替換廣告失敗: {e}")
+                        print(f"❌ 載入圖片失敗: {e}")
+                        continue
+                    except Exception as e:
+                        print(f"❌ 替換廣告失敗: {e}")
                         continue
                 
                 if not replaced:
-                    print(f"所有找到的 {image_info['width']}x{image_info['height']} 廣告位置都無法替換")
+                    print(f"❌ 所有找到的 {size_key} 廣告位置都無法替換")
             
             # 總結處理結果
             if total_replacements > 0:
@@ -1439,7 +1731,49 @@ class EttodayAdReplacer:
                 traceback.print_exc()
                 return None
     
+    def show_statistics(self):
+        """顯示統計資訊"""
+        print("\n" + "="*60)
+        print("📊 ETtoday 廣告替換統計報告")
+        print("="*60)
+        
+        print(f"📸 總截圖數量: {self.total_screenshots} 張")
+        print(f"🔄 總替換次數: {self.total_replacements} 次")
+        
+        if self.total_replacements > 0:
+            print(f"   🎬 GIF 替換: {self.gif_replacements} 次 ({self.gif_replacements/self.total_replacements*100:.1f}%)")
+            print(f"   🖼️ 靜態圖片替換: {self.static_replacements} 次 ({self.static_replacements/self.total_replacements*100:.1f}%)")
+        
+        if self.replacement_details:
+            print(f"\n📋 詳細替換記錄:")
+            for i, detail in enumerate(self.replacement_details, 1):
+                type_icon = "🎬" if detail['type'] == 'GIF' else "🖼️"
+                if detail.get('screenshot_path'):
+                    # 使用完整路徑，在支援的環境中可以點擊開啟
+                    import os
+                    full_path = os.path.abspath(detail['screenshot_path'])
+                    print(f"   {i:2d}. {type_icon} {detail['filename']} ({detail['size']}) → 📸 {full_path}")
+                else:
+                    print(f"   {i:2d}. {type_icon} {detail['filename']} ({detail['size']}) → ❌ 截圖失敗")
+        
+
+        
+
+        
+        # 顯示 GIF 使用策略
+        try:
+            from gif_config import GIF_PRIORITY
+            print(f"\n⚙️ 當前 GIF 策略:")
+            priority_text = "GIF 優先" if GIF_PRIORITY else "靜態圖片優先"
+            print(f"   🎯 優先級模式 - {priority_text}")
+        except:
+            pass
+        
+        print("="*60)
+    
     def close(self):
+        """關閉瀏覽器並顯示統計"""
+        self.show_statistics()
         self.driver.quit()
 
 def test_screen_setup():
@@ -1499,10 +1833,19 @@ def main():
     try:
         # 尋找新聞連結 - 使用 ETtoday 旅遊雲網址
         ettoday_url = "https://travel.ettoday.net"
+        print(f"正在連接 {ettoday_url}...")
+        
         news_urls = bot.get_random_news_urls(ettoday_url, NEWS_COUNT)
         
         if not news_urls:
-            print("無法獲取新聞連結")
+            print("❌ 無法獲取新聞連結，可能的原因：")
+            print("   1. 網路連線問題")
+            print("   2. ETtoday 網站暫時無法存取")
+            print("   3. 頁面結構已改變")
+            print("\n💡 建議解決方案：")
+            print("   1. 檢查網路連線")
+            print("   2. 稍後再試")
+            print("   3. 檢查防火牆設定")
             return
         
         print(f"獲取到 {len(news_urls)} 個新聞連結")
@@ -1541,16 +1884,17 @@ def main():
                 time.sleep(3)
         
         print(f"\n{'='*50}")
-        print(f"所有網站處理完成！總共產生 {total_screenshots} 張截圖")
+        print(f"🎉 所有網站處理完成！")
         print(f"{'='*50}")
+        
+
         
     except KeyboardInterrupt:
         print(f"\n\n⚠️  程式被使用者中斷 (Ctrl+C)")
-        print(f"已產生 {total_screenshots} 張截圖")
         print("正在關閉瀏覽器...")
     except Exception as e:
         print(f"\n❌ 程式執行錯誤: {e}")
-        print(f"已產生 {total_screenshots} 張截圖")
+        print("正在關閉瀏覽器...")
     finally:
         bot.close()
         print("瀏覽器已關閉")
