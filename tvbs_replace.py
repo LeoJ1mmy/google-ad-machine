@@ -1530,10 +1530,6 @@ class TvbsAdReplacer:
             return self._update_screenshot_count(filepath, current_image_info, original_ad_info)
         else:
             return None
-                    
-        except Exception as e:
-            print(f"截圖過程發生錯誤: {e}")
-            return None
     
     def process_website(self, url):
         """處理單個網站"""
