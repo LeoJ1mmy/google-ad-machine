@@ -807,8 +807,8 @@ class TvbsAdReplacer:
                         if not os.path.exists(SCREENSHOT_FOLDER):
                             os.makedirs(SCREENSHOT_FOLDER)
                         
-                        self.driver.save_screenshot(screenshot_path)
-                        print(f"📸 截圖已保存: {screenshot_path}")
+                        # 使用統一的截圖方法
+                        self._take_screenshot_with_urlbar(screenshot_path)
                         
                         # 更新統計
                         self._update_screenshot_count(screenshot_path, selected_image, None)
@@ -1483,6 +1483,33 @@ class TvbsAdReplacer:
         except Exception as e:
             print(f"復原廣告失敗: {e}")
     
+    def _take_screenshot_with_urlbar(self, filepath):
+        """統一的截圖方法，優先使用 MSS 以包含 URL bar"""
+        try:
+            # 優先使用 MSS 截圖以包含 URL bar
+            if MSS_AVAILABLE:
+                try:
+                    with mss.mss() as sct:
+                        monitor = sct.monitors[self.screen_id] if self.screen_id <= len(sct.monitors) - 1 else sct.monitors[1]
+                        screenshot = sct.grab(monitor)
+                        
+                        from PIL import Image
+                        img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+                        img.save(filepath)
+                        print(f"✅ MSS 截圖保存 (包含 URL bar，螢幕 {self.screen_id}): {filepath}")
+                        return True
+                except Exception as mss_error:
+                    print(f"MSS 截圖失敗: {mss_error}")
+            
+            # 備用方案：使用 Selenium 截圖
+            self.driver.save_screenshot(filepath)
+            print(f"⚠️ Selenium 截圖保存 (僅網頁內容，不含 URL bar): {filepath}")
+            return True
+            
+        except Exception as e:
+            print(f"截圖失敗: {e}")
+            return False
+
     def take_screenshot(self, page_title=None, current_image_info=None, original_ad_info=None):
         """截圖功能，使用新聞標題命名"""
         if not os.path.exists(SCREENSHOT_FOLDER):
@@ -1498,39 +1525,11 @@ class TvbsAdReplacer:
         else:
             filepath = f"{SCREENSHOT_FOLDER}/tvbs_replaced_{timestamp}.png"
         
-        try:
-            # 使用 Selenium 截圖
-            try:
-                self.driver.save_screenshot(filepath)
-                print(f"✅ Selenium 截圖保存: {filepath}")
-                return self._update_screenshot_count(filepath, current_image_info, original_ad_info)
-            except Exception as selenium_error:
-                print(f"Selenium 截圖失敗: {selenium_error}")
-                
-                # 備用方案：使用 MSS 截圖
-                if MSS_AVAILABLE:
-                    try:
-                        with mss.mss() as sct:
-                            # 獲取指定螢幕
-                            monitor = sct.monitors[self.screen_id] if self.screen_id <= len(sct.monitors) - 1 else sct.monitors[1]
-                            screenshot = sct.grab(monitor)
-                            
-                            # 轉換為 PIL Image 並保存
-                            from PIL import Image
-                            img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
-                            img.save(filepath)
-                            print(f"✅ MSS 截圖保存 (螢幕 {self.screen_id}): {filepath}")
-                            return self._update_screenshot_count(filepath, current_image_info, original_ad_info)
-                            
-                    except ImportError:
-                        print("❌ 需要安裝 mss 和 Pillow: pip install mss Pillow")
-                        return None
-                    except Exception as mss_error:
-                        print(f"MSS 截圖失敗: {mss_error}")
-                        return None
-                else:
-                    print("❌ MSS 截圖庫不可用")
-                    return None
+        # 使用統一的截圖方法
+        if self._take_screenshot_with_urlbar(filepath):
+            return self._update_screenshot_count(filepath, current_image_info, original_ad_info)
+        else:
+            return None
                     
         except Exception as e:
             print(f"截圖過程發生錯誤: {e}")
