@@ -877,18 +877,22 @@ class YahooAdReplacer:
                     
                     // 只有在非 none 模式下才創建按鈕
                     if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                        // 叉叉 - 使用動態樣式
+                        // 叉叉 - 使用動態樣式並添加標記
                         var closeButton = document.createElement('div');
                         closeButton.id = 'close_button_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                         closeButton.innerHTML = closeButtonHtml;
                         closeButton.style.cssText = closeButtonStyle;
+                        closeButton.setAttribute('data-injected', 'true');  // 添加標記
+                        closeButton.setAttribute('data-ad-replacer', 'close-button');  // 添加類型標記
                         
-                        // 驚嘆號 - 使用動態樣式
+                        // 驚嘆號 - 使用動態樣式並添加標記
                         var abgb = document.createElement('div');
                         abgb.id = 'abgb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                         abgb.className = 'abgb';
                         abgb.innerHTML = infoButtonHtml;
                         abgb.style.cssText = infoButtonStyle;
+                        abgb.setAttribute('data-injected', 'true');  // 添加標記
+                        abgb.setAttribute('data-ad-replacer', 'info-button');  // 添加類型標記
                         
                         // 將按鈕添加到img的父層（驚嘆號在左，叉叉在右）
                         imgParent.appendChild(abgb);
@@ -929,6 +933,8 @@ class YahooAdReplacer:
                     newImg.style.padding = '0';
                     newImg.style.border = 'none';
                     newImg.style.outline = 'none';
+                    newImg.setAttribute('data-injected', 'true');  // 添加標記
+                    newImg.setAttribute('data-ad-replacer', 'replacement-image');  // 添加類型標記
                     
                     container.appendChild(newImg);
                     
@@ -952,18 +958,22 @@ class YahooAdReplacer:
                     
                     // 只有在非 none 模式下才創建按鈕
                     if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                        // 叉叉 - 使用動態樣式
+                        // 叉叉 - 使用動態樣式並添加標記
                         var closeButton = document.createElement('div');
                         closeButton.id = 'close_button_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                         closeButton.innerHTML = closeButtonHtml;
                         closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 1) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        closeButton.setAttribute('data-injected', 'true');  // 添加標記
+                        closeButton.setAttribute('data-ad-replacer', 'close-button');  // 添加類型標記
                         
-                        // 驚嘆號 - 使用動態樣式
+                        // 驚嘆號 - 使用動態樣式並添加標記
                         var abgb = document.createElement('div');
                         abgb.id = 'abgb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                         abgb.className = 'abgb';
                         abgb.innerHTML = infoButtonHtml;
                         abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 18) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        abgb.setAttribute('data-injected', 'true');  // 添加標記
+                        abgb.setAttribute('data-ad-replacer', 'info-button');  // 添加類型標記
                         
                         // 將按鈕添加到container內，與圖片同層
                         container.appendChild(abgb);
@@ -997,17 +1007,21 @@ class YahooAdReplacer:
                         
                         // 只有在非 none 模式下才創建按鈕
                         if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                            // 添加兩個按鈕 - 使用動態樣式
+                            // 添加兩個按鈕 - 使用動態樣式並添加標記
                             var closeButton = document.createElement('div');
                             closeButton.id = 'close_button_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                             closeButton.innerHTML = closeButtonHtml;
                             closeButton.style.cssText = closeButtonStyle;
+                            closeButton.setAttribute('data-injected', 'true');  // 添加標記
+                            closeButton.setAttribute('data-ad-replacer', 'close-button');  // 添加類型標記
                             
                             var abgb = document.createElement('div');
                             abgb.id = 'abgb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                             abgb.className = 'abgb';
                             abgb.innerHTML = infoButtonHtml;
                             abgb.style.cssText = infoButtonStyle;
+                            abgb.setAttribute('data-injected', 'true');  // 添加標記
+                            abgb.setAttribute('data-ad-replacer', 'info-button');  // 添加類型標記
                             
                             // 將按鈕添加到container內，與背景圖片同層
                             container.appendChild(abgb);
@@ -1175,43 +1189,62 @@ class YahooAdReplacer:
                             
                             # 截圖後復原該位置的廣告
                             try:
-                                # 簡化還原邏輯：直接移除所有注入的元素
+                                # 最安全的還原邏輯：只移除有我們標記的元素
                                 self.driver.execute_script("""
-                                    // 移除所有注入的按鈕
-                                    var buttons = document.querySelectorAll('#close_button, #abgb, #info_button, [id^="close_button_"], [id^="abgb_"]');
-                                    for (var i = 0; i < buttons.length; i++) {
-                                        buttons[i].remove();
+                                    // 只移除有我們標記的按鈕
+                                    var injectedButtons = document.querySelectorAll('[data-ad-replacer="close-button"], [data-ad-replacer="info-button"]');
+                                    for (var i = 0; i < injectedButtons.length; i++) {
+                                        injectedButtons[i].remove();
                                     }
                                     
-                                    // 移除所有替換的圖片
-                                    var replacedImages = document.querySelectorAll('img[src*="data:image/png;base64"]');
-                                    for (var i = 0; i < replacedImages.length; i++) {
-                                        replacedImages[i].remove();
+                                    // 只移除有我們標記的替換圖片
+                                    var injectedImages = document.querySelectorAll('[data-ad-replacer="replacement-image"]');
+                                    for (var i = 0; i < injectedImages.length; i++) {
+                                        injectedImages[i].remove();
                                     }
                                     
-                                    // 移除替換容器
-                                    var container = document.querySelector('#ad_replacement_container');
-                                    if (container) {
-                                        container.remove();
+                                    // 恢復被我們修改的原始圖片
+                                    var modifiedImages = document.querySelectorAll('img[data-original-src]');
+                                    for (var i = 0; i < modifiedImages.length; i++) {
+                                        var img = modifiedImages[i];
+                                        var originalSrc = img.getAttribute('data-original-src');
+                                        if (originalSrc) {
+                                            img.src = originalSrc;
+                                            img.removeAttribute('data-original-src');
+                                            // 清理我們添加的樣式
+                                            img.style.objectFit = '';
+                                            img.style.width = '';
+                                            img.style.height = '';
+                                        }
                                     }
                                     
-                                    // 恢復所有隱藏的 iframe
-                                    var hiddenIframes = document.querySelectorAll('iframe[style*="display: none"], iframe[style*="visibility: hidden"]');
+                                    // 恢復被我們隱藏的 iframe
+                                    var hiddenIframes = document.querySelectorAll('iframe[style*="visibility: hidden"]');
                                     for (var i = 0; i < hiddenIframes.length; i++) {
-                                        hiddenIframes[i].style.display = 'block';
-                                        hiddenIframes[i].style.visibility = 'visible';
+                                        var iframe = hiddenIframes[i];
+                                        // 只恢復廣告相關的 iframe，避免影響其他功能
+                                        if (iframe.src && (iframe.src.includes('googlesyndication') || 
+                                                          iframe.src.includes('doubleclick') ||
+                                                          iframe.src.includes('googleadservices') ||
+                                                          iframe.src.includes('googletagmanager'))) {
+                                            iframe.style.visibility = 'visible';
+                                        }
                                     }
                                     
-                                    // 清理所有 data 屬性
-                                    var allElements = document.querySelectorAll('[data-original-content], [data-original-src], [data-original-display], [data-injected]');
-                                    for (var i = 0; i < allElements.length; i++) {
-                                        allElements[i].removeAttribute('data-original-content');
-                                        allElements[i].removeAttribute('data-original-src');
-                                        allElements[i].removeAttribute('data-original-display');
-                                        allElements[i].removeAttribute('data-injected');
+                                    // 清理我們添加的標記屬性
+                                    var markedElements = document.querySelectorAll('[data-injected="true"], [data-ad-replacer]');
+                                    for (var i = 0; i < markedElements.length; i++) {
+                                        markedElements[i].removeAttribute('data-injected');
+                                        markedElements[i].removeAttribute('data-ad-replacer');
                                     }
                                     
-                                    console.log('✅ 已清理所有注入元素');
+                                    // 移除我們添加的樣式表（如果存在）
+                                    var injectedStyles = document.querySelector('#google_ad_styles');
+                                    if (injectedStyles) {
+                                        injectedStyles.remove();
+                                    }
+                                    
+                                    console.log('✅ 已安全清理所有注入元素，完全保護網頁原始結構');
                                 """)
                                 print("✅ 廣告位置已復原")
                                 
