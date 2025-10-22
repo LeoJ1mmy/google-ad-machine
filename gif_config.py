@@ -38,6 +38,17 @@ MAX_CONSECUTIVE_FAILURES = 3  # 連續失敗次數限制
 BASE_URL = "https://travel.ettoday.net"  # ETtoday 旅遊雲
 NEWS_COUNT = 20             # 每次搜尋的新聞數量
 
+# 動態廣告處理設定
+ENABLE_DYNAMIC_AD_CHECK = True   # 是否啟用動態廣告檢測（設為 False 可提高速度）
+DYNAMIC_CHECK_TIMEOUT = 1        # 動態檢測等待時間（秒，建議 0.5-2 秒）
+PROCESS_DYNAMIC_ADS = False      # 是否處理動態廣告（False=跳過動態廣告）
+
+# 新的穩定性檢測設定
+MAX_STABILITY_RETRIES = 3        # 每個位置最大重試次數
+STABILITY_WAIT_TIME = 2          # 等待廣告穩定的時間（秒）
+
+
+
 # 目標廣告尺寸 (寬度x高度) - 實際上程式會根據 replace_image 資料夾中的圖片自動偵測尺寸
 TARGET_AD_SIZES = [
     {"width": 120, "height": 600},   # google_120x600.jpg
@@ -60,10 +71,16 @@ CLOSE_BUTTON_SIZE = {"width": 15, "height": 15}  # 關閉按鈕大小
 INFO_BUTTON_SIZE = {"width": 15, "height": 15}   # 資訊按鈕大小 (與關閉按鈕一致)
 INFO_BUTTON_COLOR = "#00aecd"                     # 資訊按鈕顏色 (Google藍)
 INFO_BUTTON_OFFSET = 16                          # 資訊按鈕偏移量
-BUTTON_TOP_OFFSET = 0                            # 按鈕上邊距偏移 (固定1px距離)
+BUTTON_TOP_OFFSET = 1                            # 按鈕上邊距偏移 (配合程式碼中的固定1px，總共距離上邊1px)
+
+# 按鈕定位精確控制
+BUTTON_POSITION_FIX = True                       # 啟用按鈕位置修正
+FORCE_CONTAINER_RELATIVE = True                  # 強制容器使用 relative 定位
+BUTTON_Z_INDEX_CLOSE = 101                       # 關閉按鈕 z-index
+BUTTON_Z_INDEX_INFO = 100                        # 資訊按鈕 z-index
 
 # 按鈕樣式設定 - 只需要修改這個變數即可切換樣式
-BUTTON_STYLE = "dots"  # 可選: "dots" (驚嘆號+點點), "cross" (驚嘆號+叉叉), "adchoices" (AdChoices+叉叉), "adchoices_dots" (AdChoices+點點), "none" (無按鈕)
+BUTTON_STYLE = "adchoices"  # 可選: "dots" (驚嘆號+點點), "cross" (驚嘆號+叉叉), "adchoices" (AdChoices+叉叉), "adchoices_dots" (AdChoices+點點), "none" (無按鈕)
 
 # 瀏覽器設定
 HEADLESS_MODE = False       # 無頭模式 (True/False)
@@ -74,7 +91,7 @@ FULLSCREEN_MODE = True      # 全螢幕模式 (True/False)
 # ========================================
 
 # 圖片選擇優先級 (主要設定)
-GIF_PRIORITY = False         # True: 優先使用 GIF，沒有才用靜態圖片
+GIF_PRIORITY = True         # True: 優先使用 GIF，沒有才用靜態圖片
                            # False: 優先使用靜態圖片，沒有才用 GIF
 
 # 固定設定 (程式內部使用，不需修改)

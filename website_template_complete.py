@@ -17,15 +17,16 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from datetime import datetime
 
-# 載入設定檔
+# 載入 GIF 功能專用設定檔
 try:
-    from config import *
-    print("成功載入 config.py 設定檔")
+    from gif_config import *
+    print("成功載入 gif_config.py 設定檔")
     print(f"SCREENSHOT_COUNT 設定: {SCREENSHOT_COUNT}")
     print(f"NEWS_COUNT 設定: {NEWS_COUNT}")
     print(f"IMAGE_USAGE_COUNT 設定: {IMAGE_USAGE_COUNT}")
+    print(f"GIF_PRIORITY 設定: {GIF_PRIORITY}")
 except ImportError:
-    print("找不到 config.py，使用預設設定")
+    print("找不到 gif_config.py，使用預設設定")
     # 預設設定
     SCREENSHOT_COUNT = 10
     MAX_ATTEMPTS = 50
@@ -386,8 +387,9 @@ class WebsiteAdReplacer:
             print("將使用預設螢幕位置")
     
     def load_replace_images(self):
-        """載入替換圖片並解析尺寸"""
+        """載入替換圖片並解析尺寸 - 多策略整合 GIF 版"""
         self.replace_images = []
+        self.images_by_size = {}  # 按尺寸分組的圖片字典
         
         if not os.path.exists(REPLACE_IMAGE_FOLDER):
             print(f"找不到替換圖片資料夾: {REPLACE_IMAGE_FOLDER}")
@@ -396,21 +398,38 @@ class WebsiteAdReplacer:
         print(f"開始載入 {REPLACE_IMAGE_FOLDER} 資料夾中的圖片...")
         
         for filename in os.listdir(REPLACE_IMAGE_FOLDER):
-            if filename.endswith(('.jpg', '.jpeg', '.png')):
+            if filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
                 # 解析檔案名中的尺寸
                 size_match = re.search(r'google_(\d+)x(\d+)', filename)
                 if size_match:
                     width = int(size_match.group(1))
                     height = int(size_match.group(2))
+                    size_key = f"{width}x{height}"
                     
                     image_path = os.path.join(REPLACE_IMAGE_FOLDER, filename)
-                    self.replace_images.append({
+                    file_type = "GIF" if filename.lower().endswith('.gif') else "靜態圖片"
+                    
+                    image_info = {
                         'path': image_path,
                         'filename': filename,
                         'width': width,
-                        'height': height
-                    })
-                    print(f"載入圖片: {filename} ({width}x{height})")
+                        'height': height,
+                        'type': file_type,
+                        'is_gif': filename.lower().endswith('.gif')
+                    }
+                    
+                    self.replace_images.append(image_info)
+                    
+                    # 按尺寸分組
+                    if size_key not in self.images_by_size:
+                        self.images_by_size[size_key] = {'static': [], 'gif': []}
+                    
+                    if image_info['is_gif']:
+                        self.images_by_size[size_key]['gif'].append(image_info)
+                    else:
+                        self.images_by_size[size_key]['static'].append(image_info)
+                    
+                    print(f"載入{file_type}: {filename} ({width}x{height})")
                 else:
                     print(f"跳過不符合命名規則的圖片: {filename}")
         
@@ -418,10 +437,73 @@ class WebsiteAdReplacer:
         self.replace_images.sort(key=lambda x: x['filename'])
         print(f"總共載入 {len(self.replace_images)} 張替換圖片")
         
+        # 顯示按尺寸分組的統計
+        print("\n📊 圖片尺寸分佈統計:")
+        for size_key, images in sorted(self.images_by_size.items()):
+            static_count = len(images['static'])
+            gif_count = len(images['gif'])
+            total_count = static_count + gif_count
+            
+            status_parts = []
+            if static_count > 0:
+                status_parts.append(f"{static_count}張靜態")
+            if gif_count > 0:
+                status_parts.append(f"{gif_count}張GIF")
+            
+            status = " + ".join(status_parts)
+            print(f"  {size_key}: {total_count}張 ({status})")
+        
         # 顯示載入的圖片清單
+        print(f"\n📋 完整圖片清單:")
         for i, img in enumerate(self.replace_images):
-            print(f"  {i+1}. {img['filename']} ({img['width']}x{img['height']})")
+            type_icon = "🎬" if img['is_gif'] else "🖼️"
+            print(f"  {i+1}. {type_icon} {img['filename']} ({img['width']}x{img['height']})")
     
+    def select_image_by_strategy(self, static_images, gif_images, size_key):
+        """多策略整合 GIF 選擇 - 通用模板全功能版"""
+        
+        # 如果沒有任何圖片，返回 None
+        if not static_images and not gif_images:
+            return None
+        
+        # 如果只有一種類型的圖片，直接選擇第一個
+        if not static_images and gif_images:
+            selected = gif_images[0]  # 選擇第一個 GIF
+            print(f"   🎬 選擇 GIF (唯一選項): {selected['filename']}")
+            return selected
+        elif static_images and not gif_images:
+            selected = static_images[0]  # 選擇第一個靜態圖片
+            print(f"   🖼️ 選擇靜態圖片 (唯一選項): {selected['filename']}")
+            return selected
+        
+        # 兩種類型都有，根據多種策略選擇
+        try:
+            gif_priority = globals().get('GIF_PRIORITY', True)
+        except:
+            gif_priority = True
+        
+        # 策略1: 基本優先級模式
+        if gif_priority:
+            # 優先使用 GIF
+            if gif_images:
+                selected = gif_images[0]  # 選擇第一個 GIF
+                print(f"   🎬 優先選擇 GIF: {selected['filename']}")
+                return selected
+            else:
+                selected = static_images[0]  # 選擇第一個靜態圖片
+                print(f"   🖼️ 選擇靜態圖片 (GIF 不可用): {selected['filename']}")
+                return selected
+        else:
+            # 優先使用靜態圖片
+            if static_images:
+                selected = static_images[0]  # 選擇第一個靜態圖片
+                print(f"   🖼️ 優先選擇靜態圖片: {selected['filename']}")
+                return selected
+            else:
+                selected = gif_images[0]  # 選擇第一個 GIF
+                print(f"   🎬 選擇 GIF (靜態圖片不可用): {selected['filename']}")
+                return selected
+
     def load_image_base64(self, image_path):
         if not os.path.exists(image_path):
             raise FileNotFoundError(f"找不到圖片: {image_path}")

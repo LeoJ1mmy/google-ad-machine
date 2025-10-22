@@ -821,35 +821,35 @@ class EttodayAdReplacer:
         except NameError:
             top_offset = 0  # 預設偏移量
         
-        # 計算實際的 top 值 (1px + 偏移量)
-        actual_top = 1 + top_offset
+        # 計算實際的 top 值 (0 + 偏移量)
+        actual_top = 0 + top_offset
         
         # 預先定義的按鈕樣式
         # 統一的資訊按鈕樣式 - 使用 Google 標準設計
         unified_info_button = {
-            "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
-            "style": f'position:absolute;top:{actual_top}px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+            "html": '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
+            "style": f'position:absolute;top:{actual_top+1}px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
         }
         
         button_styles = {
             "dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="2.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="6.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="10.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
                 },
                 "info_button": unified_info_button
             },
             "cross": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": f'position:absolute;top:{actual_top-1}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
                 },
                 "info_button": unified_info_button
             },
             "adchoices": {
                 "close_button": {
                     "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "style": f'position:absolute;top:{actual_top-1}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
@@ -858,8 +858,8 @@ class EttodayAdReplacer:
             },
             "adchoices_dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);border-radius:2px;cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="2.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="6.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="10.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
                 },
                 "info_button": {
                     "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
@@ -899,15 +899,6 @@ class EttodayAdReplacer:
                 print(f"尺寸不匹配: 期望 {target_width}x{target_height}, 實際 {original_info['width']}x{original_info['height']}")
                 return False
             
-            # 獲取按鈕偏移量設定
-            try:
-                top_offset = BUTTON_TOP_OFFSET
-            except NameError:
-                top_offset = 0  # 預設偏移量
-            
-            # 計算實際的 top 值 (1px + 偏移量)
-            actual_top = 1 + top_offset
-            
             # 獲取按鈕樣式
             button_style = self.get_button_style()
             close_button_html = button_style["close_button"]["html"]
@@ -921,6 +912,12 @@ class EttodayAdReplacer:
             
             # 檢查是否為 GIF 檔案
             is_gif = ad_info and ad_info.get('is_gif', False) if ad_info else False
+            
+            # 獲取按鈕偏移量設定（用於 JavaScript 中的 actual_top）
+            try:
+                actual_top = 0 + BUTTON_TOP_OFFSET
+            except NameError:
+                actual_top = 1  # 預設偏移量
             
             # 只替換圖片，保留廣告按鈕，支援動態尺寸調整
             success = self.driver.execute_script("""

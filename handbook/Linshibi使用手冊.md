@@ -1,26 +1,29 @@
-# Linshibi 廣告替換程式使用手冊
+# Linshibi 廣告替換程式使用手冊 - GIF 升級版
 
 ## 🎯 程式功能
-- 自動掃描 Linshibi.com 網站廣告
-- 將廣告替換為自訂圖片
-- 支援多種廣告尺寸 (970x90, 728x90, 300x250, 160x600 等)
-- 多螢幕支援功能
-- 智能廣告識別和動態廣告處理
-- 自動截圖記錄結果
-- 專門針對日本旅遊相關內容
+- 🎬 **支援 GIF 動畫廣告替換**（新功能）
+- 🔍 自動掃描 Linshibi.com 網站廣告
+- 🖼️ 智能選擇靜態圖片或 GIF 動畫
+- 📸 支援多種廣告尺寸 (970x90, 728x90, 300x250, 160x600 等)
+- 🖥️ 多螢幕支援功能
+- 🎛️ 智能廣告識別和動態廣告處理
+- 📍 自動截圖記錄結果（滑動到最佳位置）
+- 🗾 專門針對日本旅遊相關內容
+- ⚙️ 使用 gif_config.py 統一設定檔
 
 ## 📦 安裝
 ```bash
 pip install -r requirements.txt
 ```
 
-## ⚙️ 設定檔案 (config.py)
+## ⚙️ 設定檔案 (gif_config.py)
 
 ### 主要設定
 ```python
 SCREENSHOT_COUNT = 30        # 要截圖的張數
 NEWS_COUNT = 20             # 要搜尋的新聞數量
 HEADLESS_MODE = False       # 是否隱藏瀏覽器視窗
+GIF_PRIORITY = True         # GIF 優先模式（新功能）
 LINSHIBI_BASE_URL = "https://linshibi.com"  # 林氏璧網站
 BUTTON_STYLE = "dots"       # 按鈕樣式 (dots/cross/adchoices/adchoices_dots/none)
 ```
@@ -71,11 +74,17 @@ python linshibi_replace.py
 - **macOS**: system_profiler、AppleScript 偵測
 - 自動全螢幕顯示
 
-## 📸 替換圖片
+## 📸 替換圖片（支援 GIF）
 
-### 圖片命名
-- 格式：`google_寬度x高度.jpg`
-- 範例：`google_160x600.jpg`
+### 圖片命名規則
+- **靜態圖片**：`google_寬度x高度.jpg`
+- **GIF 動畫**：`google_寬度x高度.gif`
+- 範例：`google_160x600.jpg`, `google_160x600.gif`
+
+### GIF 優先級策略
+- **GIF_PRIORITY = True**：優先使用 GIF 動畫
+- **GIF_PRIORITY = False**：優先使用靜態圖片
+- 如果只有一種類型，自動選擇可用的圖片
 
 ### Linshibi 支援尺寸
 - **970x90** - 大橫幅廣告
@@ -90,6 +99,7 @@ python linshibi_replace.py
 - **300x600** - 大側邊欄廣告
 - **320x100** - 手機大橫幅
 - **980x120** - 超大橫幅
+- **200x200** - 正方形廣告（僅 GIF）
 - 其他常見廣告尺寸
 
 ## 🎯 目標網站特色
@@ -128,20 +138,26 @@ BUTTON_STYLE = "none"            # 無按鈕模式
 
 ### 修改截圖數量
 ```python
-# 在 config.py 中改這行
+# 在 gif_config.py 中改這行
 SCREENSHOT_COUNT = 10       # 改為10張
 ```
 
 ### 修改新聞數量
 ```python
-# 在 config.py 中改這行
+# 在 gif_config.py 中改這行
 NEWS_COUNT = 15             # 改為15個
 ```
 
 ### 隱藏瀏覽器視窗
 ```python
-# 在 config.py 中改這行
+# 在 gif_config.py 中改這行
 HEADLESS_MODE = True        # 不顯示瀏覽器
+```
+
+### GIF 使用策略
+```python
+# 在 gif_config.py 中改這行
+GIF_PRIORITY = True         # True: GIF 優先, False: 靜態圖片優先
 ```
 
 ### 自訂廣告尺寸
@@ -158,9 +174,12 @@ LINSHIBI_TARGET_AD_SIZES = [
 
 ## 📁 檔案說明
 
-- `linshibi_replace.py` - 主程式
-- `config.py` - 設定檔
-- `replace_image/` - 替換圖片資料夾
+- `linshibi_replace.py` - 主程式（GIF 升級版）
+- `gif_config.py` - 統一設定檔（新版）
+- `config.py` - 舊版設定檔（備用）
+- `replace_image/` - 替換圖片資料夾（支援 GIF）
+  - `google_160x600.jpg` - 靜態圖片
+  - `google_160x600.gif` - GIF 動畫
 - `screenshots/` - 截圖輸出資料夾
 
 ## ❓ 常見問題
@@ -170,10 +189,13 @@ A: 確認已安裝依賴包：`pip install -r requirements.txt`
 
 ### Q: 找不到廣告？
 A: 
-- 確認 `replace_image/` 資料夾中有對應尺寸的圖片
+- 確認 `replace_image/` 資料夾中有對應尺寸的圖片（.jpg 或 .gif）
 - 程式會自動等待動態廣告載入
 - 檢查網站是否有廣告區塊
 - 程式支援多種廣告類型（AdSense、Google 展示廣告、Criteo）
+
+### Q: GIF 沒有被使用？
+A: 檢查 `GIF_PRIORITY` 設定，或確認有對應尺寸的 GIF 檔案
 
 ### Q: 螢幕選擇失敗？
 A: 
@@ -278,9 +300,36 @@ linshibi_東京自由行_林氏璧給新手的十個建議_20250828_143022.png
 
 ## 🚀 快速開始
 
+## ✨ 新功能特色
+
+### 1. GIF 動畫支援
+- **智能圖片選擇**：根據 GIF_PRIORITY 設定自動選擇
+- **GIF 優先模式**：優先使用動畫廣告，提升視覺效果
+- **靜態備用**：當 GIF 不可用時自動使用靜態圖片
+- **使用統計**：詳細記錄 GIF 和靜態圖片的使用次數
+
+### 2. 智能截圖定位
+- **自動滑動**：讓廣告按鈕出現在螢幕上 25% 位置
+- **最佳視角**：確保截圖效果最佳
+- **即時還原**：截圖後立即還原廣告
+
+## 📊 統計報告
+
+程式執行完成後會顯示詳細統計：
+```
+📊 Linshibi 廣告替換統計報告
+📸 總截圖數量: 30 張
+🔄 總替換次數: 30 次
+   🎬 GIF 替換: 18 次 (60.0%)
+   🖼️ 靜態圖片替換: 12 次 (40.0%)
+
+⚙️ 當前 GIF 策略:
+   🎯 優先級模式 - GIF 優先
+```
+
 **簡單三步驟：**
-1. 修改 `config.py` 設定（特別是 `SCREENSHOT_COUNT` 和 `BUTTON_STYLE`）
-2. 執行 `python linshibi_test.py`（正式版本）
+1. 修改 `gif_config.py` 設定（特別是 `SCREENSHOT_COUNT` 和 `GIF_PRIORITY`）
+2. 執行 `python linshibi_replace.py`（GIF 升級版）
 3. 選擇螢幕後查看 `screenshots/` 資料夾的結果
 
 **專業提示：**
@@ -291,13 +340,11 @@ linshibi_東京自由行_林氏璧給新手的十個建議_20250828_143022.png
 - 程式支援 Ctrl+C 安全中斷，不會損壞資料
 - 多螢幕用戶可以選擇在副螢幕執行，不影響主要工作
 - 每個廣告位置只處理一次，提高效率
-
-**版本差異：**
-- `linshibi_test.py` - 正式版本，功能完整，推薦使用
-- `linshibi_replace.py` - 舊版本，專注 160x600 廣告
+- GIF 檔案會讓廣告更生動，但檔案較大
+- 同一尺寸準備 GIF 和靜態兩個版本
 
 ---
 
-**版本**：2.0 (linshibi_test.py)  
+**版本**：3.0 - GIF 升級版  
 **目標網站**：https://linshibi.com  
-**特色**：多尺寸廣告支援 + 智能廣告識別 + 多螢幕支援
+**特色**：GIF 動畫支援 + 多尺寸廣告支援 + 智能廣告識別 + 多螢幕支援

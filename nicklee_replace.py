@@ -34,15 +34,18 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from datetime import datetime
 
-# 載入設定檔
+# 載入 GIF 功能專用設定檔
 try:
-    from config import *
-    print("成功載入 config.py 設定檔")
+    from gif_config import *
+    print("成功載入 gif_config.py 設定檔")
     print(f"SCREENSHOT_COUNT 設定: {SCREENSHOT_COUNT}")
     print(f"NEWS_COUNT 設定: {NEWS_COUNT}")
     print(f"IMAGE_USAGE_COUNT 設定: {IMAGE_USAGE_COUNT}")
+    print(f"GIF_PRIORITY 設定: {GIF_PRIORITY}")
+    # 覆蓋 gif_config.py 中的 BASE_URL，設定 Nicklee 專用網址
+    NICKLEE_BASE_URL = "https://nicklee.tw"
 except ImportError:
-    print("找不到 config.py，使用預設設定")
+    print("找不到 gif_config.py，使用預設設定")
     # 預設設定
     SCREENSHOT_COUNT = 30
     MAX_ATTEMPTS = 50
@@ -326,8 +329,9 @@ class NickleeAdReplacer:
                 print("將使用預設螢幕位置")
     
     def load_replace_images(self):
-        """載入替換圖片並解析尺寸"""
+        """載入替換圖片並解析尺寸 - GIF 升級版"""
         self.replace_images = []
+        self.images_by_size = {}  # 按尺寸分組的圖片字典
         
         if not os.path.exists(REPLACE_IMAGE_FOLDER):
             print(f"找不到替換圖片資料夾: {REPLACE_IMAGE_FOLDER}")
@@ -336,21 +340,38 @@ class NickleeAdReplacer:
         print(f"開始載入 {REPLACE_IMAGE_FOLDER} 資料夾中的圖片...")
         
         for filename in os.listdir(REPLACE_IMAGE_FOLDER):
-            if filename.endswith(('.jpg', '.jpeg', '.png')):
+            if filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
                 # 解析檔案名中的尺寸
                 size_match = re.search(r'google_(\d+)x(\d+)', filename)
                 if size_match:
                     width = int(size_match.group(1))
                     height = int(size_match.group(2))
+                    size_key = f"{width}x{height}"
                     
                     image_path = os.path.join(REPLACE_IMAGE_FOLDER, filename)
-                    self.replace_images.append({
+                    file_type = "GIF" if filename.lower().endswith('.gif') else "靜態圖片"
+                    
+                    image_info = {
                         'path': image_path,
                         'filename': filename,
                         'width': width,
-                        'height': height
-                    })
-                    print(f"載入圖片: {filename} ({width}x{height})")
+                        'height': height,
+                        'type': file_type,
+                        'is_gif': filename.lower().endswith('.gif')
+                    }
+                    
+                    self.replace_images.append(image_info)
+                    
+                    # 按尺寸分組
+                    if size_key not in self.images_by_size:
+                        self.images_by_size[size_key] = {'static': [], 'gif': []}
+                    
+                    if image_info['is_gif']:
+                        self.images_by_size[size_key]['gif'].append(image_info)
+                    else:
+                        self.images_by_size[size_key]['static'].append(image_info)
+                    
+                    print(f"載入{file_type}: {filename} ({width}x{height})")
                 else:
                     print(f"跳過不符合命名規則的圖片: {filename}")
         
@@ -358,10 +379,73 @@ class NickleeAdReplacer:
         self.replace_images.sort(key=lambda x: x['filename'])
         print(f"總共載入 {len(self.replace_images)} 張替換圖片")
         
+        # 顯示按尺寸分組的統計
+        print("\n📊 圖片尺寸分佈統計:")
+        for size_key, images in sorted(self.images_by_size.items()):
+            static_count = len(images['static'])
+            gif_count = len(images['gif'])
+            total_count = static_count + gif_count
+            
+            status_parts = []
+            if static_count > 0:
+                status_parts.append(f"{static_count}張靜態")
+            if gif_count > 0:
+                status_parts.append(f"{gif_count}張GIF")
+            
+            status = " + ".join(status_parts)
+            print(f"  {size_key}: {total_count}張 ({status})")
+        
         # 顯示載入的圖片清單
+        print(f"\n📋 完整圖片清單:")
         for i, img in enumerate(self.replace_images):
-            print(f"  {i+1}. {img['filename']} ({img['width']}x{img['height']})")
+            type_icon = "🎬" if img['is_gif'] else "🖼️"
+            print(f"  {i+1}. {type_icon} {img['filename']} ({img['width']}x{img['height']})")
     
+    def select_image_by_strategy(self, static_images, gif_images, size_key):
+        """根據 GIF_PRIORITY 配置選擇圖片 - Nicklee 多螢幕支援版"""
+        
+        # 如果沒有任何圖片，返回 None
+        if not static_images and not gif_images:
+            return None
+        
+        # 如果只有一種類型的圖片，直接選擇第一個
+        if not static_images and gif_images:
+            selected = gif_images[0]  # 選擇第一個 GIF
+            print(f"   🎬 選擇 GIF (唯一選項): {selected['filename']}")
+            return selected
+        elif static_images and not gif_images:
+            selected = static_images[0]  # 選擇第一個靜態圖片
+            print(f"   🖼️ 選擇靜態圖片 (唯一選項): {selected['filename']}")
+            return selected
+        
+        # 兩種類型都有，根據 GIF_PRIORITY 策略選擇
+        try:
+            gif_priority = globals().get('GIF_PRIORITY', True)
+        except:
+            gif_priority = True
+        
+        # Nicklee 多螢幕支援：優先級模式
+        if gif_priority:
+            # 優先使用 GIF
+            if gif_images:
+                selected = gif_images[0]  # 選擇第一個 GIF
+                print(f"   🎬 優先選擇 GIF: {selected['filename']}")
+                return selected
+            else:
+                selected = static_images[0]  # 選擇第一個靜態圖片
+                print(f"   🖼️ 選擇靜態圖片 (GIF 不可用): {selected['filename']}")
+                return selected
+        else:
+            # 優先使用靜態圖片
+            if static_images:
+                selected = static_images[0]  # 選擇第一個靜態圖片
+                print(f"   🖼️ 優先選擇靜態圖片: {selected['filename']}")
+                return selected
+            else:
+                selected = gif_images[0]  # 選擇第一個 GIF
+                print(f"   🎬 選擇 GIF (靜態圖片不可用): {selected['filename']}")
+                return selected
+
     def load_image_base64(self, image_path):
         if not os.path.exists(image_path):
             raise FileNotFoundError(f"找不到圖片: {image_path}")
@@ -369,49 +453,54 @@ class NickleeAdReplacer:
         with open(image_path, 'rb') as f:
             return base64.b64encode(f.read()).decode('utf-8')
     
-    def get_button_style(self):
-        """根據配置返回按鈕樣式"""
+    def get_button_style(self, element=None):
+        """根據配置返回按鈕樣式 - 固定位置版本，針對扁平廣告優化"""
         button_style = getattr(self, 'button_style', BUTTON_STYLE)
         
-        # 統一的資訊按鈕樣式 - 使用 Google 標準設計，與關閉按鈕水平對齊，向左和向下微調
+        # 固定按鈕位置：距離廣告右上角各1px
+        top_offset = "1px"
+        right_offset = "1px"
+        info_right_offset = "17px"  # 關閉按鈕右邊1px + 按鈕寬度15px + 間距1px = 17px
+        
+        # 統一的資訊按鈕樣式 - 針對扁平廣告優化
         unified_info_button = {
             "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
-            "style": 'position:absolute;top:3px;right:20px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+            "style": f'position:absolute;top:{top_offset};right:{info_right_offset};width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;line-height:0;vertical-align:top;'
         }
         
         button_styles = {
             "dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:3px;right:3px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": f'position:absolute;top:{top_offset};right:{right_offset};width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;line-height:0;vertical-align:top;'
                 },
                 "info_button": unified_info_button
             },
             "cross": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:3px;right:3px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": f'position:absolute;top:{top_offset};right:{right_offset};width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;line-height:0;vertical-align:top;'
                 },
                 "info_button": unified_info_button
             },
             "adchoices": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:3px;right:3px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": f'position:absolute;top:{top_offset};right:{right_offset};width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;line-height:0;vertical-align:top;'
                 },
                 "info_button": {
-                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:3px;right:20px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;vertical-align:top;">',
+                    "style": f'position:absolute;top:{top_offset};right:{info_right_offset};width:15px;height:15px;z-index:100;display:block;cursor:pointer;line-height:0;vertical-align:top;'
                 }
             },
             "adchoices_dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:3px;right:3px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": f'position:absolute;top:{top_offset};right:{right_offset};width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;line-height:0;vertical-align:top;'
                 },
                 "info_button": {
-                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:3px;right:20px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;vertical-align:top;">',
+                    "style": f'position:absolute;top:{top_offset};right:{info_right_offset};width:15px;height:15px;z-index:100;display:block;cursor:pointer;line-height:0;vertical-align:top;'
                 }
             },
             "none": {
@@ -432,27 +521,43 @@ class NickleeAdReplacer:
         """掃描整個網頁尋找符合尺寸的廣告元素 - 針對 nicklee.tw 優化"""
         print(f"開始掃描整個網頁尋找 {target_width}x{target_height} 的廣告...")
         
-        # 先嘗試特定的 nicklee.tw 廣告選擇器
+        # 針對 nicklee.tw 的特定廣告選擇器（根據實際 HTML 結構優化）
         specific_selectors = [
-            # Google AdSense 相關
-            'ins.adsbygoogle',
-            'div[id^="aswift_"]',
-            'iframe[id^="aswift_"]',
+            # 主要 Google AdSense 廣告區域
+            'ins.adsbygoogle',  # 主要廣告容器
+            'div[id^="aswift_"]',  # AdSense 廣告容器
+            'iframe[id^="aswift_"]',  # AdSense iframe
+            
+            # 側邊廣告區塊（根據你的截圖）
+            'div[id^="adwidget_htmlwidget-"]',  # 側邊廣告小工具
+            'div[class*="graceful-widget AdWidget_HTMLWidget"]',  # 廣告小工具容器
+            
+            # 文章內廣告區域
+            'div[class*="post-content"] ins.adsbygoogle',  # 文章內的廣告
+            'center ins.adsbygoogle',  # 居中的廣告
+            
+            # 特定廣告容器（根據你的 HTML）
+            'div[id="aswift_3_host"]',  # 特定廣告主機
+            'div[id="aswift_2_host"]',  # 特定廣告主機
+            'div[id="aswift_1_host"]',  # 特定廣告主機
+            
+            # iframe 廣告
+            'iframe[name^="aswift_"]',  # AdSense iframe
+            'iframe[src*="googleads"]',  # Google 廣告 iframe
+            'iframe[src*="googlesyndication"]',  # Google 聯播網 iframe
+            
             # 一般廣告容器
             'div[class*="ad"]',
             'div[id*="ad"]',
             'div[class*="banner"]',
             'div[id*="banner"]',
-            'div[class*="google"]',
-            'div[id*="google"]',
+            
             # 圖片廣告
             'img[src*="ad"]',
             'img[src*="banner"]',
             'img[src*="google"]',
-            # iframe 廣告
-            'iframe[src*="google"]',
-            'iframe[src*="ad"]',
-            # 通用容器
+            
+            # 通用容器（最後檢查）
             'div',
             'img',
             'iframe'
@@ -513,17 +618,18 @@ class NickleeAdReplacer:
                                     return null;
                                 }
                                 
-                                // 廣告特徵檢查
-                                var adKeywords = ['ad', 'advertisement', 'banner', 'google', 'ads', 'adsense', 'adsbygoogle'];
+                                // nicklee.tw 特定廣告特徵檢查
+                                var adKeywords = ['ad', 'advertisement', 'banner', 'google', 'ads', 'adsense', 'adsbygoogle', 'aswift', 'adwidget'];
                                 var hasAdKeyword = adKeywords.some(function(keyword) {
                                     return className.toLowerCase().includes(keyword) ||
                                            id.toLowerCase().includes(keyword) ||
                                            src.toLowerCase().includes(keyword);
                                 });
                                 
-                                // 檢查父元素是否有廣告特徵
-                                var parent = element.parentElement;
+                                // 檢查父元素和祖父元素的廣告特徵
                                 var parentHasAdKeyword = false;
+                                var grandparentHasAdKeyword = false;
+                                var parent = element.parentElement;
                                 if (parent) {
                                     var parentClass = parent.className || '';
                                     var parentId = parent.id || '';
@@ -531,26 +637,58 @@ class NickleeAdReplacer:
                                         return parentClass.toLowerCase().includes(keyword) ||
                                                parentId.toLowerCase().includes(keyword);
                                     });
+                                    
+                                    // 檢查祖父元素
+                                    var grandparent = parent.parentElement;
+                                    if (grandparent) {
+                                        var grandparentClass = grandparent.className || '';
+                                        var grandparentId = grandparent.id || '';
+                                        grandparentHasAdKeyword = adKeywords.some(function(keyword) {
+                                            return grandparentClass.toLowerCase().includes(keyword) ||
+                                                   grandparentId.toLowerCase().includes(keyword);
+                                        });
+                                    }
                                 }
+                                
+                                // nicklee.tw 特定廣告容器檢查
+                                var isNickleeAdContainer = 
+                                    // AdSense 容器
+                                    (tagName === 'ins' && className.includes('adsbygoogle')) ||
+                                    // AdSense iframe 容器
+                                    (id && id.includes('aswift_')) ||
+                                    // 側邊廣告小工具
+                                    (id && id.includes('adwidget_htmlwidget')) ||
+                                    // 廣告小工具容器
+                                    (className && className.includes('AdWidget_HTMLWidget')) ||
+                                    // iframe 廣告
+                                    (tagName === 'iframe' && (src.includes('googleads') || src.includes('googlesyndication')));
                                 
                                 // 檢查是否為常見的廣告元素類型
                                 var isAdElement = tagName === 'ins' || 
-                                                tagName === 'iframe' || 
+                                                (tagName === 'iframe' && (hasAdKeyword || src.includes('google'))) || 
                                                 (tagName === 'img' && (hasAdKeyword || parentHasAdKeyword)) ||
-                                                (tagName === 'div' && (hasAdKeyword || parentHasAdKeyword || 
+                                                (tagName === 'div' && (hasAdKeyword || parentHasAdKeyword || grandparentHasAdKeyword ||
                                                  style.backgroundImage && style.backgroundImage !== 'none'));
                                 
-                                // 對於 nicklee.tw，放寬條件
-                                var isLikelyAd = hasAdKeyword || parentHasAdKeyword || isAdElement ||
-                                               // 特定尺寸通常是廣告
-                                               (width >= 120 && height >= 60) ||
+                                // nicklee.tw 廣告判斷邏輯（更精確）
+                                var isLikelyAd = isNickleeAdContainer || hasAdKeyword || parentHasAdKeyword || grandparentHasAdKeyword || isAdElement ||
+                                               // 根據你提供的截圖，這些是實際的廣告尺寸
+                                               (width === 600 && height === 280) ||  // 文章前廣告
+                                               (width === 280 && height === 1073) || // 文章下方廣告
+                                               (width === 1073 && height === 280) || // 文章上方廣告
+                                               (width === 270 && height === 600) ||  // 側邊廣告
                                                // 常見廣告尺寸
                                                (width === 728 && height === 90) ||
                                                (width === 970 && height === 90) ||
                                                (width === 300 && height === 250) ||
                                                (width === 336 && height === 280) ||
                                                (width === 160 && height === 600) ||
-                                               (width === 320 && height === 50);
+                                               (width === 320 && height === 50) ||
+                                               (width === 320 && height === 100) ||
+                                               (width === 250 && height === 250) ||
+                                               (width === 200 && height === 200) ||
+                                               (width === 240 && height === 400) ||
+                                               (width === 120 && height === 600);
                                 
                                 if (isLikelyAd) {
                                     return {
@@ -658,8 +796,64 @@ class NickleeAdReplacer:
         
         print(f"🎯 掃描完成，總共找到 {len(matching_elements)} 個符合 {target_width}x{target_height} 尺寸的廣告元素")
         
+        # 如果沒有找到符合尺寸的廣告，顯示 nicklee.tw 網站上的實際廣告尺寸
+        if len(matching_elements) == 0:
+            print(f"💡 未找到 {target_width}x{target_height} 尺寸的廣告，以下是 nicklee.tw 網站上的廣告尺寸分析：")
+            ad_sizes = self.driver.execute_script("""
+                var adSizes = {};
+                
+                // 檢查 AdSense 廣告
+                var adsenseElements = document.querySelectorAll('ins.adsbygoogle, div[id*="aswift"], iframe[id*="aswift"], div[id*="adwidget"]');
+                
+                for (var i = 0; i < adsenseElements.length; i++) {
+                    var el = adsenseElements[i];
+                    var rect = el.getBoundingClientRect();
+                    var width = Math.round(rect.width);
+                    var height = Math.round(rect.height);
+                    
+                    if (width > 50 && height > 50) {
+                        var sizeKey = width + 'x' + height;
+                        var info = {
+                            size: sizeKey,
+                            count: (adSizes[sizeKey] ? adSizes[sizeKey].count : 0) + 1,
+                            tagName: el.tagName.toLowerCase(),
+                            className: el.className || '',
+                            id: el.id || '',
+                            position: 'top:' + Math.round(rect.top) + ', left:' + Math.round(rect.left)
+                        };
+                        adSizes[sizeKey] = info;
+                    }
+                }
+                
+                // 轉換為陣列並排序
+                var sizeArray = [];
+                for (var size in adSizes) {
+                    sizeArray.push(adSizes[size]);
+                }
+                
+                // 按尺寸排序
+                sizeArray.sort(function(a, b) { 
+                    var aSize = a.size.split('x').map(Number);
+                    var bSize = b.size.split('x').map(Number);
+                    return (bSize[0] * bSize[1]) - (aSize[0] * aSize[1]);
+                });
+                
+                return sizeArray;
+            """)
+            
+            if ad_sizes:
+                print("   📐 發現的廣告尺寸:")
+                for ad_info in ad_sizes:
+                    tag_info = f"<{ad_info['tagName']}>"
+                    class_info = f" class='{ad_info['className'][:30]}...'" if ad_info['className'] else ""
+                    id_info = f" id='{ad_info['id'][:20]}...'" if ad_info['id'] else ""
+                    print(f"      🎯 {ad_info['size']}: {ad_info['count']} 個 {tag_info}{class_info}{id_info}")
+                    print(f"         位置: {ad_info['position']}")
+            else:
+                print("   📐 無法檢測到廣告元素，可能網站結構已變更或廣告被阻擋")
+        
         # 按位置排序，優先處理頁面上方的廣告
-        matching_elements.sort(key=lambda x: x['info']['top'] if 'info' in x else x['position'])
+        matching_elements.sort(key=lambda x: x['info']['top'] if 'info' in x else float(x['position'].split(',')[0].split(':')[1]))
         
         return matching_elements
     
@@ -698,8 +892,8 @@ class NickleeAdReplacer:
                 if (abs(original_info['width'] - target_width) > 5 or abs(original_info['height'] - target_height) > 5):
                     return False
             
-            # 獲取按鈕樣式
-            button_style = self.get_button_style()
+            # 獲取按鈕樣式（傳遞 element 參數進行動態位置調整）
+            button_style = self.get_button_style(element)
             
             # 檢查是否為 "none" 模式
             current_button_style = getattr(self, 'button_style', BUTTON_STYLE)
@@ -779,24 +973,38 @@ class NickleeAdReplacer:
                         
                         // 只有在非 none 模式下才創建按鈕
                         if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                            // 叉叉按鈕
-                            if (closeButtonHtml) {
-                                var closeButton = document.createElement('div');
-                                closeButton.id = 'close_button';
-                                closeButton.innerHTML = closeButtonHtml;
-                                closeButton.style.cssText = closeButtonStyle;
-                                imgParent.appendChild(closeButton);
+                            // 確保父容器是 relative 定位
+                            if (window.getComputedStyle(imgParent).position === 'static') {
+                                imgParent.style.position = 'relative';
                             }
                             
-                            // 資訊按鈕
-                            if (infoButtonHtml) {
-                                var abgb = document.createElement('div');
-                                abgb.id = 'abgb';
-                                abgb.className = 'abgb';
-                                abgb.innerHTML = infoButtonHtml;
-                                abgb.style.cssText = infoButtonStyle;
-                                imgParent.appendChild(abgb);
-                            }
+                            // 使用 setTimeout 延遲創建按鈕，確保樣式完全應用
+                            setTimeout(function() {
+                                // 移除可能存在的舊按鈕
+                                ['close_button', 'abgb'].forEach(function(id){
+                                    var old = imgParent.querySelector('#'+id);
+                                    if(old) old.remove();
+                                });
+                                
+                                // 叉叉按鈕 - 固定位置：距離右上角各1px
+                                if (closeButtonHtml) {
+                                    var closeButton = document.createElement('div');
+                                    closeButton.id = 'close_button';
+                                    closeButton.innerHTML = closeButtonHtml;
+                                    closeButton.style.cssText = closeButtonStyle;
+                                    imgParent.appendChild(closeButton);
+                                }
+                                
+                                // 資訊按鈕 - 固定位置：距離右上角1px，距離關閉按鈕17px
+                                if (infoButtonHtml) {
+                                    var abgb = document.createElement('div');
+                                    abgb.id = 'abgb';
+                                    abgb.className = 'abgb';
+                                    abgb.innerHTML = infoButtonHtml;
+                                    abgb.style.cssText = infoButtonStyle;
+                                    imgParent.appendChild(abgb);
+                                }
+                            }, 10); // 延遲10毫秒，讓瀏覽器完成樣式計算
                         }
                     }
                 }
@@ -827,21 +1035,41 @@ class NickleeAdReplacer:
                     
                     // 只有在非 none 模式下才創建按鈕
                     if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                        // 叉叉按鈕 - 向左和向下微調
+                        // 確保容器定位正確
+                        if (window.getComputedStyle(container).position === 'static') {
+                            container.style.position = 'relative';
+                        }
+                        
+                        // 強制重新計算容器樣式
+                        container.offsetHeight;
+                        
+                        // 重新獲取精確的位置信息（避免第一次計算誤差）
+                        var containerRect = container.getBoundingClientRect();
+                        var updatedIframeRect = iframe.getBoundingClientRect();
+                        
+                        // 固定按鈕位置：距離 iframe 右上角各1px
+                        var topPos = updatedIframeRect.top - containerRect.top + 1;
+                        var rightPos = containerRect.right - updatedIframeRect.right + 1;
+                        
+                        // 叉叉按鈕 - 固定位置
                         var closeButton = document.createElement('div');
                         closeButton.id = 'close_button';
                         closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 1) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);';
+                        closeButton.style.cssText = 'position:absolute;top:' + topPos + 'px;right:' + rightPos + 'px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;box-sizing:border-box;';
                         
-                        // 資訊按鈕 - 與關閉按鈕水平對齊，向左和向下微調
+                        // 資訊按鈕 - 距離關閉按鈕17px
                         var abgb = document.createElement('div');
                         abgb.id = 'abgb';
                         abgb.className = 'abgb';
                         abgb.innerHTML = infoButtonHtml;
-                        abgb.style.cssText = 'position:absolute;top:' + (iframeRect.top - container.getBoundingClientRect().top + 1) + 'px;right:' + (container.getBoundingClientRect().right - iframeRect.right + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);line-height:0;';
+                        abgb.style.cssText = 'position:absolute;top:' + topPos + 'px;right:' + (rightPos + 17) + 'px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;box-sizing:border-box;';
                         
                         container.appendChild(abgb);
                         container.appendChild(closeButton);
+                        
+                        // 強制重新計算按鈕位置
+                        closeButton.offsetHeight;
+                        abgb.offsetHeight;
                     }
                     replacedCount++;
                 }
@@ -860,21 +1088,29 @@ class NickleeAdReplacer:
                         
                         // 只有在非 none 模式下才創建按鈕
                         if (!isNoneMode && closeButtonHtml && infoButtonHtml) {
-                            // 叉叉按鈕
-                            var closeButton = document.createElement('div');
-                            closeButton.id = 'close_button';
-                            closeButton.innerHTML = closeButtonHtml;
-                            closeButton.style.cssText = closeButtonStyle;
+                            // 確保容器定位正確
+                            if (window.getComputedStyle(container).position === 'static') {
+                                container.style.position = 'relative';
+                            }
                             
-                            // 資訊按鈕
-                            var abgb = document.createElement('div');
-                            abgb.id = 'abgb';
-                            abgb.className = 'abgb';
-                            abgb.innerHTML = infoButtonHtml;
-                            abgb.style.cssText = infoButtonStyle;
-                            
-                            container.appendChild(abgb);
-                            container.appendChild(closeButton);
+                            // 使用 setTimeout 延遲創建按鈕
+                            setTimeout(function() {
+                                // 叉叉按鈕
+                                var closeButton = document.createElement('div');
+                                closeButton.id = 'close_button';
+                                closeButton.innerHTML = closeButtonHtml;
+                                closeButton.style.cssText = closeButtonStyle;
+                                
+                                // 資訊按鈕
+                                var abgb = document.createElement('div');
+                                abgb.id = 'abgb';
+                                abgb.className = 'abgb';
+                                abgb.innerHTML = infoButtonHtml;
+                                abgb.style.cssText = infoButtonStyle;
+                                
+                                container.appendChild(abgb);
+                                container.appendChild(closeButton);
+                            }, 10);
                         }
                     }
                 }
@@ -1117,7 +1353,7 @@ class NickleeAdReplacer:
                 }
                 
                 // 清理標題，移除不適合檔名的字符
-                title = title.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '_');
+                title = title.replace(/[<>:"/\\\\|?*]/g, '').replace(/\\s+/g, '_');
                 
                 // 限制長度
                 if (title.length > 50) {

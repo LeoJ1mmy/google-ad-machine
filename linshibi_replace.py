@@ -34,91 +34,21 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from datetime import datetime
 
-# 載入設定檔
+# 載入 GIF 設定檔（主要設定檔）
 try:
-    from config import *
-    print("成功載入 config.py 設定檔")
+    from gif_config import *
+    print("成功載入 gif_config.py 設定檔")
     print(f"SCREENSHOT_COUNT 設定: {SCREENSHOT_COUNT}")
     print(f"NEWS_COUNT 設定: {NEWS_COUNT}")
     print(f"IMAGE_USAGE_COUNT 設定: {IMAGE_USAGE_COUNT}")
+    print(f"BUTTON_STYLE 設定: {BUTTON_STYLE}")
 except ImportError:
-    print("找不到 config.py，使用預設設定")
-    # 預設設定
-    SCREENSHOT_COUNT = 30
-    MAX_ATTEMPTS = 50
-    PAGE_LOAD_TIMEOUT = 15
-    WAIT_TIME = 3
-    REPLACE_IMAGE_FOLDER = "replace_image"
-    DEFAULT_IMAGE = "mini.jpg"
-    MINI_IMAGE = "mini.jpg"
-    LINSHIBI_BASE_URL = "https://linshibi.com"
-    NEWS_COUNT = 20
-    LINSHIBI_TARGET_AD_SIZES = [
-        {"width": 970, "height": 90},
-        {"width": 728, "height": 90},
-        {"width": 300, "height": 250},
-        {"width": 320, "height": 50},
-        {"width": 336, "height": 280},
-        {"width": 160, "height": 600},
-        {"width": 120, "height": 600},
-        {"width": 240, "height": 400},
-        {"width": 250, "height": 250},
-        {"width": 300, "height": 600},
-        {"width": 320, "height": 100},
-        {"width": 980, "height": 120},
-        {"width": 468, "height": 60},
-        {"width": 234, "height": 60},
-        {"width": 125, "height": 125},
-        {"width": 200, "height": 200}
-    ]
-    IMAGE_USAGE_COUNT = {
-        "replace_image/google_120x600.jpg": 5,
-        "replace_image/google_160x600.jpg": 5,
-        "replace_image/google_240x400.jpg": 5,
-        "replace_image/google_250x250.jpg": 5,
-        "replace_image/google_300x50.jpg": 5,
-        "replace_image/google_300x250.jpg": 5,
-        "replace_image/google_300x600.jpg": 5,
-        "replace_image/google_320x50.jpg": 5,
-        "replace_image/google_320x100.jpg": 5,
-        "replace_image/google_336x280.jpg": 5,
-        "replace_image/google_728x90.jpg": 5,
-        "replace_image/google_970x90.jpg": 5,
-        "replace_image/google_980x120.jpg": 5,
-    }
-    MAX_CONSECUTIVE_FAILURES = 3
-    CLOSE_BUTTON_SIZE = {"width": 15, "height": 15}
-    INFO_BUTTON_SIZE = {"width": 15, "height": 15}
-    INFO_BUTTON_COLOR = "#00aecd"
-    INFO_BUTTON_OFFSET = 16
-    HEADLESS_MODE = False
-    FULLSCREEN_MODE = True
-    SCREENSHOT_FOLDER = "screenshots"
-    BUTTON_STYLE = "dots"
+    print("找不到 gif_config.py，請確保 gif_config.py 存在")
+    exit(1)
 
-# 確保必要變數總是有定義（即使成功載入 config.py 但缺少某些變數）
+# 確保必要變數總是有定義
 if 'LINSHIBI_BASE_URL' not in globals():
     LINSHIBI_BASE_URL = "https://linshibi.com"
-
-if 'LINSHIBI_TARGET_AD_SIZES' not in globals():
-    LINSHIBI_TARGET_AD_SIZES = [
-        {"width": 970, "height": 90},
-        {"width": 728, "height": 90},
-        {"width": 300, "height": 250},
-        {"width": 320, "height": 50},
-        {"width": 336, "height": 280},
-        {"width": 160, "height": 600},
-        {"width": 120, "height": 600},
-        {"width": 240, "height": 400},
-        {"width": 250, "height": 250},
-        {"width": 300, "height": 600},
-        {"width": 320, "height": 100},
-        {"width": 980, "height": 120},
-        {"width": 468, "height": 60},
-        {"width": 234, "height": 60},
-        {"width": 125, "height": 125},
-        {"width": 200, "height": 200}
-    ]
 
 class ScreenManager:
     """螢幕管理器，用於偵測和管理多螢幕"""
@@ -303,6 +233,7 @@ class LinshibiAdReplacer:
         self.screen_id = screen_id
         self.setup_driver(headless)
         self.load_replace_images()
+        self.prewarm_svg_rendering()
         
     def setup_driver(self, headless):
         chrome_options = Options()
@@ -386,6 +317,75 @@ class LinshibiAdReplacer:
         for i, img in enumerate(self.replace_images):
             print(f"  {i+1}. {img['filename']} ({img['width']}x{img['height']})")
     
+    def prewarm_svg_rendering(self):
+        """預熱 SVG 渲染引擎，避免第一次按鈕顯示異常"""
+        try:
+            print("正在預熱 SVG 渲染引擎...")
+            
+            # 載入一個簡單的空白頁面來執行預熱
+            self.driver.get("data:text/html,<html><body></body></html>")
+            time.sleep(0.5)  # 等待頁面載入
+            
+            # 創建一個隱藏的預熱容器
+            prewarm_script = """
+                // 創建預熱容器
+                var prewarmContainer = document.createElement('div');
+                prewarmContainer.id = 'svg-prewarm-container';
+                prewarmContainer.style.cssText = 'position:fixed;top:-100px;left:-100px;width:50px;height:50px;opacity:0;pointer-events:none;z-index:-1;';
+                
+                // 創建所有可能用到的 SVG 按鈕樣式進行預熱
+                var svgButtons = [
+                    // dots 樣式 (viewBox="0 -1 15 16")
+                    '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="1.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="5.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="9.5" r="1.5" fill="#00aecd"/></svg>',
+                    // cross 樣式
+                    '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 1L11 8M11 1L4 8" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    // adchoices cross 樣式 (與 cross 相同)
+                    '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 1L11 8M11 1L4 8" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    // adchoices_dots 樣式 (與 dots 相同)
+                    '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="1.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="5.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="9.5" r="1.5" fill="#00aecd"/></svg>',
+                    // unified_info_button 樣式
+                    '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 -1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 8h1.75V3.5h-1.75zM7.5 0.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>' 
+                
+                // 為每個 SVG 創建預熱元素
+                svgButtons.forEach(function(svgHtml, index) {
+                    var prewarmButton = document.createElement('div');
+                    prewarmButton.innerHTML = svgHtml;
+                    prewarmButton.style.cssText = 'position:absolute;top:0px;left:' + (index * 20) + 'px;width:15px;height:15px;background-color:rgba(255,255,255,1);';
+                    prewarmContainer.appendChild(prewarmButton);
+                });
+                
+                // 添加 AdChoices 圖片預熱
+                var adChoicesImg = document.createElement('img');
+                adChoicesImg.src = 'https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png';
+                adChoicesImg.style.cssText = 'position:absolute;top:0px;left:80px;width:15px;height:15px;';
+                prewarmContainer.appendChild(adChoicesImg);
+                
+                // 添加到頁面
+                document.body.appendChild(prewarmContainer);
+                
+                // 強制渲染
+                prewarmContainer.offsetHeight;
+                
+                // 短暫延遲後移除預熱容器
+                setTimeout(function() {
+                    if (document.getElementById('svg-prewarm-container')) {
+                        document.body.removeChild(prewarmContainer);
+                    }
+                }, 200);
+                
+                return 'SVG 預熱完成';
+            """
+            
+            # 執行預熱腳本
+            result = self.driver.execute_script(prewarm_script)
+            print(f"✅ {result}")
+            
+            # 等待預熱完成
+            time.sleep(0.3)
+            
+        except Exception as e:
+            print(f"⚠️ SVG 預熱失敗，但不影響正常功能: {e}")
+
     def load_image_base64(self, image_path):
         if not os.path.exists(image_path):
             raise FileNotFoundError(f"找不到圖片: {image_path}")
@@ -397,45 +397,48 @@ class LinshibiAdReplacer:
         """根據配置返回按鈕樣式 - 參考 ad_replacer.py"""
         button_style = getattr(self, 'button_style', BUTTON_STYLE)
         
+        # 計算動態按鈕位置
+        actual_top = 0 + BUTTON_TOP_OFFSET
+        
         # 統一的資訊按鈕樣式 - 使用新的結構設計
         unified_info_button = {
-            "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 -0.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 9h1.75V4.5h-1.75zM7.5 1.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
-            "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+            "html": '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 -1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 8h1.75V3.5h-1.75zM7.5 0.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
+            "style": f'position:absolute;top:{actual_top}px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;border:none;padding:0;margin:0;box-sizing:border-box;border-radius:0;'
         }
         
         button_styles = {
             "dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="1.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="5.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="9.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="1.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="5.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="9.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;border:none;padding:0;margin:0;box-sizing:border-box;border-radius:0;'
                 },
                 "info_button": unified_info_button
             },
             "cross": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2L11 9M11 2L4 9" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 1L11 8M11 1L4 8" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;border:none;padding:0;margin:0;box-sizing:border-box;border-radius:0;'
                 },
                 "info_button": unified_info_button
             },
             "adchoices": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2L11 9M11 2L4 9" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 -1 15 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 1L11 8M11 1L4 8" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;border:none;padding:0;margin:0;box-sizing:border-box;border-radius:0;'
                 },
                 "info_button": {
-                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;margin-top:-2px;">',
-                    "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" style="display:block;width:auto;height:auto;max-width:15px;max-height:15px;object-fit:contain;border:none;padding:0;margin:auto;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);">',
+                    "style": f'position:absolute;top:{actual_top}px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;border:none;padding:0;margin:0;box-sizing:border-box;border-radius:0;overflow:hidden;'
                 }
             },
             "adchoices_dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="2.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="6.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="10.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);;cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="1.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="5.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="9.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": f'position:absolute;top:{actual_top}px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;border:none;padding:0;margin:0;box-sizing:border-box;border-radius:0;'
                 },
                 "info_button": {
-                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;margin-top:-1px;">',
-                    "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" style="display:block;width:auto;height:auto;max-width:15px;max-height:15px;object-fit:contain;border:none;padding:0;margin:auto;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);">',
+                    "style": f'position:absolute;top:{actual_top}px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;border:none;padding:0;margin:0;box-sizing:border-box;border-radius:0;overflow:hidden;'
                 }
             },
             "none": {
@@ -817,6 +820,10 @@ class LinshibiAdReplacer:
                     container.style.position = 'relative';
                     container.style.display = 'block';
                     container.style.overflow = 'visible';
+                    container.style.border = 'none';
+                    container.style.padding = '0';
+                    container.style.margin = '0 auto';
+                    container.style.boxSizing = 'border-box';
                     
                     // 🎯 處理廣告置中 - 檢查父容器並設定置中
                     var parentElement = container.parentElement;
@@ -1640,8 +1647,10 @@ class LinshibiAdReplacer:
                 container.style.width = width + 'px';
                 container.style.height = height + 'px';
                 container.style.position = 'relative';
-                container.style.overflow = 'hidden';
+                container.style.overflow = 'visible';
                 container.style.border = 'none';
+                container.style.padding = '0';
+                container.style.boxSizing = 'border-box';
                 container.style.background = '#f0f0f0';
                 
                 // 🎯 處理廣告置中
@@ -1744,7 +1753,10 @@ class LinshibiAdReplacer:
                 element.style.width = width + 'px';
                 element.style.height = height + 'px';
                 element.style.position = 'relative';
-                element.style.overflow = 'hidden';
+                element.style.overflow = 'visible';
+                element.style.border = 'none';
+                element.style.padding = '0';
+                element.style.boxSizing = 'border-box';
                 
                 // 🎯 處理廣告置中
                 element.style.margin = '0 auto';

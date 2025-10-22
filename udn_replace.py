@@ -21,6 +21,8 @@ try:
     print(f"NEWS_COUNT 設定: {NEWS_COUNT}")
     print(f"IMAGE_USAGE_COUNT 設定: {IMAGE_USAGE_COUNT}")
     print(f"GIF_PRIORITY 設定: {GIF_PRIORITY}")
+    # 覆蓋 gif_config.py 中的 BASE_URL，設定 UDN 專用網址
+    UDN_BASE_URL = "https://travel.udn.com/travel/index"
 except ImportError:
     print("找不到 gif_config.py，使用預設設定")
     # 預設設定
@@ -814,7 +816,7 @@ class UdnAdReplacer:
         button_styles = {
             "dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="2.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="6.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="10.5" r="1.5" fill="#00aecd"/></svg>',
                     "style": 'position:absolute;top:0px;right:0px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
                 },
                 "info_button": unified_info_button

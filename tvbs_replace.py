@@ -40,6 +40,8 @@ try:
     print(f"NEWS_COUNT 設定: {NEWS_COUNT}")
     print(f"IMAGE_USAGE_COUNT 設定: {IMAGE_USAGE_COUNT}")
     print(f"GIF_PRIORITY 設定: {GIF_PRIORITY}")
+    # 覆蓋 gif_config.py 中的 BASE_URL，設定 TVBS 專用網址
+    TVBS_BASE_URL = "https://supertaste.tvbs.com.tw/travel"
     # print(f"RANDOM_SELECTION 設定: {RANDOM_SELECTION}")  # 已移除隨機選擇功能
 except ImportError:
     print("找不到 config.py，使用預設設定")
@@ -1156,45 +1158,45 @@ class TvbsAdReplacer:
         button_style = getattr(self, 'button_style', BUTTON_STYLE)
 
         
-        # 統一的資訊按鈕樣式 - 針對 TVBS 網站優化
+        # 統一的資訊按鈕樣式 - 針對 TVBS 網站優化，確保位置一致
         unified_info_button = {
-            "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
-            "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+            "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;width:15px;height:15px;"><path d="M7.5 1.5a6 6 0 100 12 6 6 0 100-12m0 1a5 5 0 110 10 5 5 0 110-10zM6.625 11h1.75V6.5h-1.75zM7.5 3.75a1 1 0 100 2 1 1 0 100-2z" fill="#00aecd"/></svg>',
+            "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;background-color:rgba(255,255,255,1);cursor:pointer;margin:0;padding:0;border:none;box-sizing:border-box;line-height:0;vertical-align:top;'
         }
         
         button_styles = {
             "dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;width:15px;height:15px;"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;margin:0;padding:0;border:none;box-sizing:border-box;line-height:0;vertical-align:top;'
                 },
                 "info_button": unified_info_button
             },
             "cross": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;width:15px;height:15px;"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;margin:0;padding:0;border:none;box-sizing:border-box;line-height:0;vertical-align:top;'
                 },
                 "info_button": unified_info_button
             },
             "adchoices": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;width:15px;height:15px;"><path d="M4 4L11 11M11 4L4 11" stroke="#00aecd" stroke-width="1.5" stroke-linecap="round"/></svg>',
+                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;margin:0;padding:0;border:none;box-sizing:border-box;line-height:0;vertical-align:top;'
                 },
                 "info_button": {
-                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;vertical-align:top;">',
+                    "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;margin:0;padding:0;border:none;box-sizing:border-box;line-height:0;vertical-align:top;'
                 }
             },
             "adchoices_dots": {
                 "close_button": {
-                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
-                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;'
+                    "html": '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;width:15px;height:15px;"><circle cx="7.5" cy="3.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="7.5" r="1.5" fill="#00aecd"/><circle cx="7.5" cy="11.5" r="1.5" fill="#00aecd"/></svg>',
+                    "style": 'position:absolute;top:1px;right:1px;width:15px;height:15px;z-index:101;display:block;background-color:rgba(255,255,255,1);cursor:pointer;margin:0;padding:0;border:none;box-sizing:border-box;line-height:0;vertical-align:top;'
                 },
                 "info_button": {
-                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;">',
-                    "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;'
+                    "html": '<img src="https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png" width="15" height="15" style="display:block;width:15px;height:15px;vertical-align:top;">',
+                    "style": 'position:absolute;top:1px;right:17px;width:15px;height:15px;z-index:100;display:block;cursor:pointer;margin:0;padding:0;border:none;box-sizing:border-box;line-height:0;vertical-align:top;'
                 }
             },
 
@@ -1383,22 +1385,33 @@ class TvbsAdReplacer:
                     }
                 }
                 
-                // 添加按鈕
+                // 添加按鈕 - 修復版本，確保位置一致
                 if (!isNoneMode && replacedCount > 0) {
+                    // 強制重新計算容器樣式
+                    container.offsetHeight;
+                    
                     if (closeButtonHtml) {
                         var closeButton = document.createElement('div');
                         closeButton.id = 'close_button';
                         closeButton.innerHTML = closeButtonHtml;
-                        closeButton.style.cssText = closeButtonStyle;
+                        // 強制使用精確的樣式，避免容器影響
+                        closeButton.style.cssText = 'position:absolute!important;top:1px!important;right:1px!important;width:15px!important;height:15px!important;z-index:101!important;display:block!important;background-color:rgba(255,255,255,1)!important;cursor:pointer!important;margin:0!important;padding:0!important;border:none!important;box-sizing:border-box!important;line-height:0!important;vertical-align:top!important;';
                         container.appendChild(closeButton);
+                        
+                        // 強制重新計算按鈕位置
+                        closeButton.offsetHeight;
                     }
                     
                     if (infoButtonHtml) {
                         var infoButton = document.createElement('div');
                         infoButton.id = 'abgb';
                         infoButton.innerHTML = infoButtonHtml;
-                        infoButton.style.cssText = infoButtonStyle;
+                        // 強制使用精確的樣式，避免容器影響
+                        infoButton.style.cssText = 'position:absolute!important;top:1px!important;right:17px!important;width:15px!important;height:15px!important;z-index:100!important;display:block!important;background-color:rgba(255,255,255,1)!important;cursor:pointer!important;margin:0!important;padding:0!important;border:none!important;box-sizing:border-box!important;line-height:0!important;vertical-align:top!important;';
                         container.appendChild(infoButton);
+                        
+                        // 強制重新計算按鈕位置
+                        infoButton.offsetHeight;
                     }
                 }
                 
